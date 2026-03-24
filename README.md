@@ -2,6 +2,10 @@
 pip install -r requirements.txt
 ```
 
+---
+
+### ↓↓↓ 리눅스 환경 ↓↓↓
+
 ```sh
 python3 -m venv venv # 가상환경 생성
 source venv/bin/activate # 가상환경 활성화
@@ -16,6 +20,10 @@ sudo systemctl enable badak-bot
 sudo systemctl start badak-bot
 ```
 
+---
+
+### 명령어
+
 ```sh
 # !명령어
 @bot.command(name="핑")
@@ -27,3 +35,20 @@ async def ping(ctx):
 async def ping(interaction: discord.Interaction):
     await interaction.response.send_message(f"퐁! 지연시간: {round(bot.latency * 1000)}ms")
 ```
+
+<br>
+
+### asyncio
+
+Python 비동기 처리 라이브러리이다.  
+디스코드 봇은 동시에 여러 일을 처리해야 한다.  
+
+`유저A가 /핑 입력`  
+`유저B가 /전적 입력  ← 외부 API 호출 (시간 걸림)`  
+`유저C가 /핑 입력`  
+
+일반적인 코드(동기)라면 `유저B`의 로직이 끝날 때까지 `유저C`는 대기해야 한다.
+
+`asyncio`를 쓰면 `유저B`가 API 응답 기다리는 동안 `유저C` 요청을 먼저 처리할 수 있다.
+
+<br>
