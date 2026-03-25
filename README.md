@@ -22,9 +22,25 @@ sudo systemctl start badak-bot
 
 ---
 
+### Scopes
+
+| Scopes | Description |
+| ------ | ----------- |
+| `bot`  | 봇으로서 서버에 참여 가능
+
+### Bot Permissions
+
+| Permissions                     | Description |
+| ------------------------------- | ----------- |
+| `Read Messages / View Channels` | 채널 보기
+| `Send Messages`                 | 메시지 전송
+| `Manage Roles`                  | 역할 부여/제거
+
+<br>
+
 ### 명령어
 
-```sh
+```py
 # !명령어
 @bot.command(name="핑")
 async def ping(ctx):
