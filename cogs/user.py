@@ -95,7 +95,7 @@ class User(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @app_commands.command(name="유저등록", description="스타크래프트 커뮤니티에 등록합니다")
+    @app_commands.command(name="유저등록", description="유저 정보를 등록합니다")
     async def register(self, interaction: discord.Interaction):
         await interaction.response.send_modal(RegisterModal())
 

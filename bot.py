@@ -25,6 +25,7 @@ async def main():
     async with bot:
         await bot.load_extension("cogs.general")
         await bot.load_extension("cogs.user")
+        await bot.load_extension("cogs.admin")
         await bot.start(os.getenv("DISCORD_TOKEN"))
 
 

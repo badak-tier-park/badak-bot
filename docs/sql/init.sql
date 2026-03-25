@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
     nickname    VARCHAR(50)  NOT NULL,
     race        VARCHAR(1)   NOT NULL CHECK (race IN ('T', 'Z', 'P')),
     tier        VARCHAR(5)   NOT NULL,
+    is_admin    BOOLEAN      DEFAULT FALSE,
     created_at  TIMESTAMP    DEFAULT NOW(),
     updated_at  TIMESTAMP    DEFAULT NOW()
 );
