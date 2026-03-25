@@ -1,7 +1,9 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.engine import URL
+from sqlalchemy import text
 from dotenv import load_dotenv
+from logger import logger
 import os
 
 load_dotenv()
@@ -17,3 +19,12 @@ url = URL.create(
 
 engine = create_async_engine(url, connect_args={"ssl": "require"})
 AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+
+async def check_db_connection():
+    try:
+        async with AsyncSessionLocal() as session:
+            await session.execute(text("SELECT 1"))
+        logger.info("DB 연결 성공")
+    except Exception as e:
+        logger.error(f"DB 연결 실패: {e}")
