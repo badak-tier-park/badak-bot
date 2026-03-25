@@ -15,5 +15,5 @@ url = URL.create(
     database=os.getenv("DB_NAME"),
 )
 
-engine = create_async_engine(url)
+engine = create_async_engine(url, connect_args={"ssl": "require"})
 AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
