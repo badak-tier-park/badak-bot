@@ -22,9 +22,25 @@ sudo systemctl start badak-bot
 
 ---
 
+### Scopes
+
+| Scopes | Description |
+| ------ | ----------- |
+| `bot`  | 봇으로서 서버에 참여 가능
+
+### Bot Permissions
+
+| Permissions                     | Description |
+| ------------------------------- | ----------- |
+| `Read Messages / View Channels` | 채널 보기
+| `Send Messages`                 | 메시지 전송
+| `Manage Roles`                  | 역할 부여/제거
+
+<br>
+
 ### 명령어
 
-```sh
+```py
 # !명령어
 @bot.command(name="핑")
 async def ping(ctx):
@@ -50,5 +66,11 @@ Python 비동기 처리 라이브러리이다.
 일반적인 코드(동기)라면 `유저B`의 로직이 끝날 때까지 `유저C`는 대기해야 한다.
 
 `asyncio`를 쓰면 `유저B`가 API 응답 기다리는 동안 `유저C` 요청을 먼저 처리할 수 있다.
+
+<br>
+
+### ephemeral=True
+
+명령어를 실행한 사람만 볼 수 있게 하는 옵션(채널 도배 방지)
 
 <br>
