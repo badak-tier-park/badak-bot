@@ -226,7 +226,6 @@ class Admin(commands.Cog):
         self.bot = bot
 
     @app_commands.command(name="설정보기", description="현재 설정을 확인합니다")
-    @app_commands.default_permissions(administrator=True)
     async def view_config(self, interaction: discord.Interaction):
         current_role = interaction.guild.get_role(config.ADMIN_ROLE_ID)
         current_channel = interaction.guild.get_channel(config.ADMIN_CHANNEL_ID)
@@ -240,13 +239,16 @@ class Admin(commands.Cog):
     @app_commands.command(name="설정", description="관리자 역할 또는 관리자 채널을 변경합니다")
     @app_commands.rename(role="관리자역할", channel="관리자채널")
     @app_commands.describe(role="변경할 관리자 역할", channel="변경할 관리자 채널")
-    @app_commands.default_permissions(administrator=True)
     async def update_config(
         self,
         interaction: discord.Interaction,
         role: discord.Role = None,
         channel: discord.TextChannel = None,
     ):
+        if interaction.user.id != interaction.guild.owner_id:
+            await interaction.response.send_message("서버 장만 사용할 수 있는 명령어입니다.", ephemeral=True)
+            return
+
         if not role and not channel:
             await interaction.response.send_message("변경할 관리자역할 또는 관리자채널을 입력해주세요.", ephemeral=True)
             return
@@ -272,7 +274,6 @@ class Admin(commands.Cog):
         )
 
     @app_commands.command(name="관리자등록", description="유저를 관리자로 등록합니다")
-    @app_commands.default_permissions(manage_roles=True)
     async def register_admin(self, interaction: discord.Interaction):
         async with AsyncSessionLocal() as session:
             result = await session.execute(
@@ -292,7 +293,6 @@ class Admin(commands.Cog):
         )
 
     @app_commands.command(name="관리자해제", description="관리자를 해제합니다")
-    @app_commands.default_permissions(manage_roles=True)
     async def remove_admin(self, interaction: discord.Interaction):
         async with AsyncSessionLocal() as session:
             result = await session.execute(
