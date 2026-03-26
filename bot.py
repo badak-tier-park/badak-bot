@@ -3,6 +3,7 @@ from discord.ext import commands
 from dotenv import load_dotenv
 from config import GUILD_ID
 from logger import logger
+from database import check_db_connection
 import os
 
 load_dotenv()
@@ -19,6 +20,7 @@ async def on_ready():
     logger.info(f"봇 온라인: {bot.user} (ID: {bot.user.id})")
     logger.info(f"연결된 서버 수: {len(bot.guilds)}")
     logger.info("슬래시 커맨드 동기화 완료")
+    await check_db_connection()
 
 
 async def main():
