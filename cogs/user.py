@@ -1,10 +1,11 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-from config import GUILD_ID
+from config import GUILD_ID, ADMIN_CHANNEL_ID
 from database import AsyncSessionLocal
 from sqlalchemy import text
 from logger import logger
+
 
 # -----------------------------------------------
 # Modal: 닉네임 입력
@@ -24,6 +25,7 @@ class RegisterModal(discord.ui.Modal, title="유저 등록"):
             view=view,
             ephemeral=True
         )
+
 
 # -----------------------------------------------
 # View: 종족 / 티어 선택
@@ -88,6 +90,7 @@ class RegisterSelectView(discord.ui.View):
             view=None
         )
 
+
 # -----------------------------------------------
 # Cog: 유저 관리 명령어
 # -----------------------------------------------
@@ -120,41 +123,76 @@ class User(commands.Cog):
             )
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(name="종족변경", description="종족을 변경합니다")
+    @app_commands.command(name="닉네임변경신청", description="닉네임 변경을 신청합니다 (관리자 승인 필요)")
+    @app_commands.describe(nickname="변경할 닉네임")
+    async def request_nickname(self, interaction: discord.Interaction, nickname: str):
+        await interaction.response.defer(ephemeral=True)
+
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                text("SELECT nickname FROM users WHERE discord_id = :discord_id"),
+                {"discord_id": interaction.user.id}
+            )
+            user = result.fetchone()
+
+        if not user:
+            await interaction.followup.send("등록된 유저가 아닙니다. `/유저등록`을 먼저 해주세요.")
+            return
+
+        try:
+            admin_channel = await self.bot.fetch_channel(ADMIN_CHANNEL_ID)
+            embed = discord.Embed(title="📝 닉네임 변경 신청", color=0xffa500)
+            embed.add_field(name="신청자", value=f"{interaction.user.mention}", inline=False)
+            embed.add_field(name="현재 닉네임", value=user.nickname, inline=False)
+            embed.add_field(name="변경 닉네임", value=nickname, inline=False)
+
+            from cogs.admin import NicknameApprovalView
+            await admin_channel.send(
+                embed=embed,
+                view=NicknameApprovalView(interaction.user.id, nickname)
+            )
+
+            logger.info(f"[닉네임변경신청] {interaction.user} | {user.nickname} → {nickname}")
+            await interaction.followup.send("✅ 닉네임 변경 신청이 완료됐습니다. 관리자 승인을 기다려주세요.")
+        except Exception as e:
+            logger.error(f"[닉네임변경신청 오류] {e}")
+            await interaction.followup.send("오류가 발생했습니다. 관리자에게 문의해주세요.")
+
+    @app_commands.command(name="종족변경신청", description="종족 변경을 신청합니다 (관리자 승인 필요)")
     @app_commands.choices(race=[
         app_commands.Choice(name="테란", value="T"),
         app_commands.Choice(name="저그", value="Z"),
         app_commands.Choice(name="프로토스", value="P"),
     ])
-    async def change_race(self, interaction: discord.Interaction, race: str):
+    async def request_race(self, interaction: discord.Interaction, race: str):
+        await interaction.response.defer(ephemeral=True)
+
         async with AsyncSessionLocal() as session:
             result = await session.execute(
-                text("UPDATE users SET race = :race, updated_at = NOW() WHERE discord_id = :discord_id"),
-                {"race": race, "discord_id": interaction.user.id}
+                text("SELECT nickname, race FROM users WHERE discord_id = :discord_id"),
+                {"discord_id": interaction.user.id}
             )
-            await session.commit()
+            user = result.fetchone()
 
-        if result.rowcount == 0:
-            await interaction.response.send_message("등록된 유저가 아닙니다. `/유저등록`을 먼저 해주세요.", ephemeral=True)
+        if not user:
+            await interaction.followup.send("등록된 유저가 아닙니다. `/유저등록`을 먼저 해주세요.")
             return
 
-        await interaction.response.send_message(f"✅ 종족이 **{race}** 으로 변경되었습니다.")
+        admin_channel = await self.bot.fetch_channel(ADMIN_CHANNEL_ID)
+        embed = discord.Embed(title="📝 종족 변경 신청", color=0xffa500)
+        embed.add_field(name="신청자", value=f"{interaction.user.mention}", inline=False)
+        embed.add_field(name="닉네임", value=user.nickname, inline=False)
+        embed.add_field(name="현재 종족", value=user.race, inline=False)
+        embed.add_field(name="변경 종족", value=race, inline=False)
 
-    @app_commands.command(name="닉네임변경", description="닉네임을 변경합니다")
-    @app_commands.describe(nickname="변경할 닉네임")
-    async def change_nickname(self, interaction: discord.Interaction, nickname: str):
-        async with AsyncSessionLocal() as session:
-            result = await session.execute(
-                text("UPDATE users SET nickname = :nickname, updated_at = NOW() WHERE discord_id = :discord_id"),
-                {"nickname": nickname, "discord_id": interaction.user.id}
-            )
-            await session.commit()
+        from cogs.admin import RaceApprovalView
+        await admin_channel.send(
+            embed=embed,
+            view=RaceApprovalView(interaction.user.id, user.nickname, race)
+        )
 
-        if result.rowcount == 0:
-            await interaction.response.send_message("등록된 유저가 아닙니다. `/유저등록`을 먼저 해주세요.", ephemeral=True)
-            return
-
-        await interaction.response.send_message(f"✅ 닉네임이 **{nickname}** 으로 변경되었습니다.")
+        logger.info(f"[종족변경신청] {interaction.user} | {user.race} → {race}")
+        await interaction.followup.send("✅ 종족 변경 신청이 완료됐습니다. 관리자 승인을 기다려주세요.")
 
 
 async def setup(bot: commands.Bot):

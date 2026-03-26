@@ -8,7 +8,7 @@ from logger import logger
 
 
 # -----------------------------------------------
-# View: Discord UserSelect
+# View: 관리자 등록 - Discord UserSelect
 # -----------------------------------------------
 class AdminUserSelectView(discord.ui.View):
     def __init__(self):
@@ -62,6 +62,101 @@ class AdminUserSelectView(discord.ui.View):
 
 
 # -----------------------------------------------
+# View: 닉네임 변경 승인/거절
+# -----------------------------------------------
+class NicknameApprovalView(discord.ui.View):
+    def __init__(self, discord_id: int, new_nickname: str):
+        super().__init__(timeout=None)
+        self.discord_id = discord_id
+        self.new_nickname = new_nickname
+
+    @discord.ui.button(label="승인", style=discord.ButtonStyle.success)
+    async def approve(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                text("UPDATE users SET nickname = :nickname, updated_at = NOW() WHERE discord_id = :discord_id"),
+                {"nickname": self.new_nickname, "discord_id": self.discord_id}
+            )
+            await session.commit()
+
+        try:
+            member = await interaction.guild.fetch_member(self.discord_id)
+            await member.send(f"✅ 닉네임 변경 신청이 승인됐습니다.\n변경된 닉네임: **{self.new_nickname}**")
+        except Exception:
+            pass
+
+        logger.info(f"[닉네임변경승인] {interaction.user} → discord_id: {self.discord_id} | 닉네임: {self.new_nickname}")
+        await interaction.response.edit_message(
+            content=f"✅ 닉네임 변경 승인 완료 (by {interaction.user.display_name})",
+            embed=None,
+            view=None
+        )
+
+    @discord.ui.button(label="거절", style=discord.ButtonStyle.danger)
+    async def reject(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        try:
+            member = await interaction.guild.fetch_member(self.discord_id)
+            await member.send("❌ 닉네임 변경 신청이 거절됐습니다.")
+        except Exception:
+            pass
+
+        logger.info(f"[닉네임변경거절] {interaction.user} → discord_id: {self.discord_id}")
+        await interaction.response.edit_message(
+            content=f"❌ 닉네임 변경 거절 (by {interaction.user.display_name})",
+            embed=None,
+            view=None
+        )
+
+
+# -----------------------------------------------
+# View: 종족 변경 승인/거절
+# -----------------------------------------------
+class RaceApprovalView(discord.ui.View):
+    def __init__(self, discord_id: int, nickname: str, new_race: str):
+        super().__init__(timeout=None)
+        self.discord_id = discord_id
+        self.nickname = nickname
+        self.new_race = new_race
+
+    @discord.ui.button(label="승인", style=discord.ButtonStyle.success)
+    async def approve(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                text("UPDATE users SET race = :race, updated_at = NOW() WHERE discord_id = :discord_id"),
+                {"race": self.new_race, "discord_id": self.discord_id}
+            )
+            await session.commit()
+
+        try:
+            member = await interaction.guild.fetch_member(self.discord_id)
+            await member.send(f"✅ 종족 변경 신청이 승인됐습니다.\n변경된 종족: **{self.new_race}**")
+        except Exception:
+            pass
+
+        logger.info(f"[종족변경승인] {interaction.user} → {self.nickname} | 종족: {self.new_race}")
+        await interaction.response.edit_message(
+            content=f"✅ 종족 변경 승인 완료 (by {interaction.user.display_name})",
+            embed=None,
+            view=None
+        )
+
+    @discord.ui.button(label="거절", style=discord.ButtonStyle.danger)
+    async def reject(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        try:
+            member = await interaction.guild.fetch_member(self.discord_id)
+            await member.send("❌ 종족 변경 신청이 거절됐습니다.")
+        except Exception:
+            pass
+
+        logger.info(f"[종족변경거절] {interaction.user} → {self.nickname}")
+        await interaction.response.edit_message(
+            content=f"❌ 종족 변경 거절 (by {interaction.user.display_name})",
+            embed=None,
+            view=None
+        )
+
+
+# -----------------------------------------------
 # Cog: 관리자 관리 명령어
 # -----------------------------------------------
 class Admin(commands.Cog):
@@ -69,7 +164,7 @@ class Admin(commands.Cog):
         self.bot = bot
 
     @app_commands.command(name="관리자등록", description="유저를 관리자로 등록합니다")
-    @app_commands.default_permissions(manage_roles=True) # 운영진 역할과 역할 관리 권한이 있어야 사용 가능
+    @app_commands.default_permissions(manage_roles=True)
     async def register_admin(self, interaction: discord.Interaction):
         async with AsyncSessionLocal() as session:
             result = await session.execute(
