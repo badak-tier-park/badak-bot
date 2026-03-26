@@ -5,6 +5,8 @@ from config import GUILD_ID, ADMIN_ROLE_ID
 from database import AsyncSessionLocal
 from sqlalchemy import text
 from logger import logger
+from dotenv import set_key, find_dotenv
+import config
 
 
 # -----------------------------------------------
@@ -162,6 +164,52 @@ class RaceApprovalView(discord.ui.View):
 class Admin(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+
+    @app_commands.command(name="설정보기", description="현재 설정을 확인합니다")
+    @app_commands.default_permissions(administrator=True)
+    async def view_config(self, interaction: discord.Interaction):
+        current_role = interaction.guild.get_role(config.ADMIN_ROLE_ID)
+        current_channel = interaction.guild.get_channel(config.ADMIN_CHANNEL_ID)
+        role_text = current_role.mention if current_role else f"알 수 없음 (ID: {config.ADMIN_ROLE_ID})"
+        channel_text = current_channel.mention if current_channel else f"알 수 없음 (ID: {config.ADMIN_CHANNEL_ID})"
+        await interaction.response.send_message(
+            f"**현재 설정**\n관리자 역할: {role_text}\n관리자 채널: {channel_text}",
+            ephemeral=True
+        )
+
+    @app_commands.command(name="설정", description="관리자 역할 또는 관리자 채널을 변경합니다")
+    @app_commands.rename(role="관리자역할", channel="관리자채널")
+    @app_commands.describe(role="변경할 관리자 역할", channel="변경할 관리자 채널")
+    @app_commands.default_permissions(administrator=True)
+    async def update_config(
+        self,
+        interaction: discord.Interaction,
+        role: discord.Role = None,
+        channel: discord.TextChannel = None,
+    ):
+        if not role and not channel:
+            await interaction.response.send_message("변경할 관리자역할 또는 관리자채널을 입력해주세요.", ephemeral=True)
+            return
+
+        env_path = find_dotenv()
+        lines = []
+
+        if role:
+            set_key(env_path, "ADMIN_ROLE_ID", str(role.id))
+            config.ADMIN_ROLE_ID = role.id
+            lines.append(f"관리자 역할: {role.mention}")
+            logger.info(f"[설정] {interaction.user} → ADMIN_ROLE_ID={role.id}")
+
+        if channel:
+            set_key(env_path, "ADMIN_CHANNEL_ID", str(channel.id))
+            config.ADMIN_CHANNEL_ID = channel.id
+            lines.append(f"관리자 채널: {channel.mention}")
+            logger.info(f"[설정] {interaction.user} → ADMIN_CHANNEL_ID={channel.id}")
+
+        await interaction.response.send_message(
+            "✅ 설정이 변경됐습니다.\n" + "\n".join(lines),
+            ephemeral=True
+        )
 
     @app_commands.command(name="관리자등록", description="유저를 관리자로 등록합니다")
     @app_commands.default_permissions(manage_roles=True)
