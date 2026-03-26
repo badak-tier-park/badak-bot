@@ -16,6 +16,9 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
+    from cogs.admin import NicknameApprovalView, RaceApprovalView
+    bot.add_view(NicknameApprovalView())
+    bot.add_view(RaceApprovalView())
     await bot.tree.sync(guild=GUILD_ID)
     logger.info(f"봇 온라인: {bot.user} (ID: {bot.user.id})")
     logger.info(f"연결된 서버 수: {len(bot.guilds)}")

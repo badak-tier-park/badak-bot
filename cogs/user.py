@@ -141,7 +141,7 @@ class User(commands.Cog):
     @app_commands.command(name="닉네임변경신청", description="닉네임 변경을 신청합니다 (관리자 승인 필요)")
     @app_commands.describe(nickname="변경할 닉네임")
     async def request_nickname(self, interaction: discord.Interaction, nickname: str):
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer()
 
         async with AsyncSessionLocal() as session:
             result = await session.execute(
@@ -151,10 +151,18 @@ class User(commands.Cog):
             user = result.fetchone()
 
         if not user:
-            await interaction.followup.send("등록된 유저가 아닙니다. `/유저등록`을 먼저 해주세요.")
+            await interaction.followup.send("등록된 유저가 아닙니다. `/유저등록`을 먼저 해주세요.", ephemeral=True)
             return
 
         try:
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    text("INSERT INTO change_requests (type, discord_id, old_value, new_value, channel_id) VALUES ('nickname', :discord_id, :old_value, :new_value, :channel_id) RETURNING id"),
+                    {"discord_id": interaction.user.id, "old_value": user.nickname, "new_value": nickname, "channel_id": interaction.channel_id}
+                )
+                req_id = result.fetchone().id
+                await session.commit()
+
             admin_channel = await self.bot.fetch_channel(ADMIN_CHANNEL_ID)
             embed = discord.Embed(title="📝 닉네임 변경 신청", color=0xffa500)
             embed.add_field(name="신청자", value=f"{interaction.user.mention}", inline=False)
@@ -162,16 +170,20 @@ class User(commands.Cog):
             embed.add_field(name="변경 닉네임", value=nickname, inline=False)
 
             from cogs.admin import NicknameApprovalView
-            await admin_channel.send(
-                embed=embed,
-                view=NicknameApprovalView(interaction.user.id, nickname)
-            )
+            message = await admin_channel.send(embed=embed, view=NicknameApprovalView())
+
+            async with AsyncSessionLocal() as session:
+                await session.execute(
+                    text("UPDATE change_requests SET message_id = :message_id WHERE id = :id"),
+                    {"message_id": message.id, "id": req_id}
+                )
+                await session.commit()
 
             logger.info(f"[닉네임변경신청] {interaction.user} | {user.nickname} → {nickname}")
-            await interaction.followup.send("✅ 닉네임 변경 신청이 완료됐습니다. 관리자 승인을 기다려주세요.")
+            await interaction.followup.send(f"{interaction.user.mention} 닉네임 변경 신청이 완료됐습니다. 관리자 승인을 기다려주세요.")
         except Exception as e:
             logger.error(f"[닉네임변경신청 오류] {e}")
-            await interaction.followup.send("오류가 발생했습니다. 관리자에게 문의해주세요.")
+            await interaction.followup.send("오류가 발생했습니다. 관리자에게 문의해주세요.", ephemeral=True)
 
     @app_commands.command(name="종족변경신청", description="종족 변경을 신청합니다 (관리자 승인 필요)")
     @app_commands.choices(race=[
@@ -180,7 +192,7 @@ class User(commands.Cog):
         app_commands.Choice(name="프로토스", value="P"),
     ])
     async def request_race(self, interaction: discord.Interaction, race: str):
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer()
 
         async with AsyncSessionLocal() as session:
             result = await session.execute(
@@ -190,24 +202,40 @@ class User(commands.Cog):
             user = result.fetchone()
 
         if not user:
-            await interaction.followup.send("등록된 유저가 아닙니다. `/유저등록`을 먼저 해주세요.")
+            await interaction.followup.send("등록된 유저가 아닙니다. `/유저등록`을 먼저 해주세요.", ephemeral=True)
             return
 
-        admin_channel = await self.bot.fetch_channel(ADMIN_CHANNEL_ID)
-        embed = discord.Embed(title="📝 종족 변경 신청", color=0xffa500)
-        embed.add_field(name="신청자", value=f"{interaction.user.mention}", inline=False)
-        embed.add_field(name="닉네임", value=user.nickname, inline=False)
-        embed.add_field(name="현재 종족", value=user.race, inline=False)
-        embed.add_field(name="변경 종족", value=race, inline=False)
+        try:
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    text("INSERT INTO change_requests (type, discord_id, old_value, new_value, channel_id) VALUES ('race', :discord_id, :old_value, :new_value, :channel_id) RETURNING id"),
+                    {"discord_id": interaction.user.id, "old_value": user.race, "new_value": race, "channel_id": interaction.channel_id}
+                )
+                req_id = result.fetchone().id
+                await session.commit()
 
-        from cogs.admin import RaceApprovalView
-        await admin_channel.send(
-            embed=embed,
-            view=RaceApprovalView(interaction.user.id, user.nickname, race)
-        )
+            admin_channel = await self.bot.fetch_channel(ADMIN_CHANNEL_ID)
+            embed = discord.Embed(title="📝 종족 변경 신청", color=0xffa500)
+            embed.add_field(name="신청자", value=f"{interaction.user.mention}", inline=False)
+            embed.add_field(name="닉네임", value=user.nickname, inline=False)
+            embed.add_field(name="현재 종족", value=user.race, inline=False)
+            embed.add_field(name="변경 종족", value=race, inline=False)
 
-        logger.info(f"[종족변경신청] {interaction.user} | {user.race} → {race}")
-        await interaction.followup.send("✅ 종족 변경 신청이 완료됐습니다. 관리자 승인을 기다려주세요.")
+            from cogs.admin import RaceApprovalView
+            message = await admin_channel.send(embed=embed, view=RaceApprovalView())
+
+            async with AsyncSessionLocal() as session:
+                await session.execute(
+                    text("UPDATE change_requests SET message_id = :message_id WHERE id = :id"),
+                    {"message_id": message.id, "id": req_id}
+                )
+                await session.commit()
+
+            logger.info(f"[종족변경신청] {interaction.user} | {user.race} → {race}")
+            await interaction.followup.send(f"{interaction.user.mention} 종족 변경 신청이 완료됐습니다. 관리자 승인을 기다려주세요.")
+        except Exception as e:
+            logger.error(f"[종족변경신청 오류] {e}")
+            await interaction.followup.send("오류가 발생했습니다. 관리자에게 문의해주세요.", ephemeral=True)
 
 
 async def setup(bot: commands.Bot):
