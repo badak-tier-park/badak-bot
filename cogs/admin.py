@@ -34,6 +34,11 @@ class AdminUserSelectView(discord.ui.View):
                 {"discord_id": self.selected_user.id}
             )
             user = result.fetchone()
+            executor = await session.execute(
+                text("SELECT nickname FROM users WHERE discord_id = :discord_id"),
+                {"discord_id": interaction.user.id}
+            )
+            executor_nickname = (executor.fetchone() or [interaction.user.display_name])[0]
 
         if not user:
             await interaction.response.edit_message(content="등록되지 않은 유저입니다.", view=None)
@@ -57,10 +62,65 @@ class AdminUserSelectView(discord.ui.View):
             await member.add_roles(role)
 
         logger.info(f"[관리자등록] {interaction.user} (ID: {interaction.user.id}) → {user.nickname} (ID: {self.selected_user.id})")
-        await interaction.response.edit_message(
-            content=f"✅ **{user.nickname}** 을(를) 관리자로 등록했습니다.",
-            view=None
-        )
+        await interaction.response.edit_message(content="✅ 완료됐습니다.", view=None)
+        await interaction.channel.send(f"🛡️ **{user.nickname}** 이(가) 관리자로 등록됐습니다. - by {interaction.user.display_name}({executor_nickname}) -")
+
+
+# -----------------------------------------------
+# View: 관리자 해제 - Discord UserSelect
+# -----------------------------------------------
+class AdminRemoveView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=60)
+        self.selected_user = None
+
+    @discord.ui.select(cls=discord.ui.UserSelect, placeholder="유저를 검색하세요")
+    async def user_select(self, interaction: discord.Interaction, select: discord.ui.UserSelect):
+        self.selected_user = select.values[0]
+        await interaction.response.defer()
+
+    @discord.ui.button(label="해제", style=discord.ButtonStyle.danger)
+    async def confirm(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        if not self.selected_user:
+            await interaction.response.send_message("유저를 선택해주세요.", ephemeral=True)
+            return
+
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                text("SELECT nickname, is_admin FROM users WHERE discord_id = :discord_id"),
+                {"discord_id": self.selected_user.id}
+            )
+            user = result.fetchone()
+            executor = await session.execute(
+                text("SELECT nickname FROM users WHERE discord_id = :discord_id"),
+                {"discord_id": interaction.user.id}
+            )
+            executor_nickname = (executor.fetchone() or [interaction.user.display_name])[0]
+
+        if not user:
+            await interaction.response.edit_message(content="등록되지 않은 유저입니다.", view=None)
+            return
+
+        if not user.is_admin:
+            await interaction.response.edit_message(content="관리자가 아닙니다.", view=None)
+            return
+
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                text("UPDATE users SET is_admin = FALSE WHERE discord_id = :discord_id"),
+                {"discord_id": self.selected_user.id}
+            )
+            await session.commit()
+
+        guild = interaction.guild
+        role = guild.get_role(config.ADMIN_ROLE_ID)
+        member = await guild.fetch_member(self.selected_user.id)
+        if role and member:
+            await member.remove_roles(role)
+
+        logger.info(f"[관리자해제] {interaction.user} (ID: {interaction.user.id}) → {user.nickname} (ID: {self.selected_user.id})")
+        await interaction.response.edit_message(content="✅ 완료됐습니다.", view=None)
+        await interaction.channel.send(f"🔓 **{user.nickname}** 의 관리자가 해제됐습니다. - by {interaction.user.display_name}({executor_nickname}) -")
 
 
 # -----------------------------------------------
@@ -89,7 +149,7 @@ class NicknameApprovalView(discord.ui.View):
 
         logger.info(f"[닉네임변경승인] {interaction.user} → discord_id: {self.discord_id} | 닉네임: {self.new_nickname}")
         await interaction.response.edit_message(
-            content=f"✅ 닉네임 변경 승인 완료 (by {interaction.user.display_name})",
+            content=f"✅ 닉네임 변경 승인 완료 - by {interaction.user.display_name} -",
             embed=None,
             view=None
         )
@@ -104,7 +164,7 @@ class NicknameApprovalView(discord.ui.View):
 
         logger.info(f"[닉네임변경거절] {interaction.user} → discord_id: {self.discord_id}")
         await interaction.response.edit_message(
-            content=f"❌ 닉네임 변경 거절 (by {interaction.user.display_name})",
+            content=f"❌ 닉네임 변경 거절 - by {interaction.user.display_name} -",
             embed=None,
             view=None
         )
@@ -137,7 +197,7 @@ class RaceApprovalView(discord.ui.View):
 
         logger.info(f"[종족변경승인] {interaction.user} → {self.nickname} | 종족: {self.new_race}")
         await interaction.response.edit_message(
-            content=f"✅ 종족 변경 승인 완료 (by {interaction.user.display_name})",
+            content=f"✅ 종족 변경 승인 완료 - by {interaction.user.display_name} -",
             embed=None,
             view=None
         )
@@ -152,7 +212,7 @@ class RaceApprovalView(discord.ui.View):
 
         logger.info(f"[종족변경거절] {interaction.user} → {self.nickname}")
         await interaction.response.edit_message(
-            content=f"❌ 종족 변경 거절 (by {interaction.user.display_name})",
+            content=f"❌ 종족 변경 거절 - by {interaction.user.display_name} -",
             embed=None,
             view=None
         )
@@ -228,6 +288,26 @@ class Admin(commands.Cog):
         await interaction.response.send_message(
             "관리자로 등록할 유저를 선택하세요.",
             view=AdminUserSelectView(),
+            ephemeral=True
+        )
+
+    @app_commands.command(name="관리자해제", description="관리자를 해제합니다")
+    @app_commands.default_permissions(manage_roles=True)
+    async def remove_admin(self, interaction: discord.Interaction):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                text("SELECT is_admin FROM users WHERE discord_id = :discord_id"),
+                {"discord_id": interaction.user.id}
+            )
+            user = result.fetchone()
+
+        if not user or not user.is_admin:
+            await interaction.response.send_message("관리자만 사용할 수 있는 명령어입니다.", ephemeral=True)
+            return
+
+        await interaction.response.send_message(
+            "관리자를 해제할 유저를 선택하세요.",
+            view=AdminRemoveView(),
             ephemeral=True
         )
 
