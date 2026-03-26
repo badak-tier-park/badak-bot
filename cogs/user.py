@@ -106,6 +106,15 @@ class User(commands.Cog):
 
     @app_commands.command(name="유저등록", description="유저 정보를 등록합니다")
     async def register(self, interaction: discord.Interaction):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                text("SELECT id FROM users WHERE discord_id = :discord_id"),
+                {"discord_id": interaction.user.id}
+            )
+            if result.fetchone():
+                await interaction.response.send_message("이미 등록된 유저입니다.", ephemeral=True)
+                return
+
         await interaction.response.send_modal(RegisterModal())
 
     @app_commands.command(name="유저목록", description="등록된 유저 목록을 확인합니다")
