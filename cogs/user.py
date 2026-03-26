@@ -78,17 +78,23 @@ class RegisterSelectView(discord.ui.View):
                 await interaction.response.edit_message(content="이미 등록된 유저입니다.", view=None)
                 return
 
+            # 길드 소유자는 자동으로 관리자 권한 부여
+            is_owner = interaction.user.id == interaction.guild.owner_id
             await session.execute(
-                text("INSERT INTO users (discord_id, nickname, race, tier) VALUES (:discord_id, :nickname, :race, :tier)"),
-                {"discord_id": interaction.user.id, "nickname": self.nickname, "race": self.race, "tier": self.tier}
+                text("INSERT INTO users (discord_id, nickname, race, tier, is_admin) VALUES (:discord_id, :nickname, :race, :tier, :is_admin)"),
+                {"discord_id": interaction.user.id, "nickname": self.nickname, "race": self.race, "tier": self.tier, "is_admin": is_owner}
             )
             await session.commit()
 
-        logger.info(f"[유저등록] {interaction.user} (ID: {interaction.user.id}) | 닉네임: {self.nickname} | 종족: {self.race} | 티어: {self.tier}")
-        await interaction.response.edit_message(
-            content=f"✅ 등록 완료!\n닉네임: {self.nickname} / 종족: {self.race} / 티어: {self.tier}",
-            view=None
-        )
+        if is_owner:
+            import config
+            role = interaction.guild.get_role(config.ADMIN_ROLE_ID)
+            if role:
+                await interaction.user.add_roles(role)
+
+        logger.info(f"[유저등록] {interaction.user} (ID: {interaction.user.id}) | 닉네임: {self.nickname} | 종족: {self.race} | 티어: {self.tier} | 관리자: {is_owner}")
+        await interaction.response.edit_message(content="✅ 등록이 완료됐습니다.", view=None)
+        await interaction.channel.send(f"🎉 **{self.nickname}** 님이 등록됐습니다! (종족: {self.race} / 티어: {self.tier})")
 
 
 # -----------------------------------------------
