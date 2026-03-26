@@ -286,6 +286,16 @@ class Admin(commands.Cog):
             await interaction.response.send_message("관리자만 사용할 수 있는 명령어입니다.", ephemeral=True)
             return
 
+        role = interaction.guild.get_role(config.ADMIN_ROLE_ID)
+        if not role:
+            await interaction.response.send_message(
+                "⚠️ 관리자 역할이 설정되어 있지 않습니다.\n"
+                "Discord에서 관리자 역할을 먼저 생성해주세요.\n"
+                "역할이 생성되어 있다면 `/설정` 명령어로 관리자 역할을 지정해주세요.",
+                ephemeral=True
+            )
+            return
+
         await interaction.response.send_message(
             "관리자로 등록할 유저를 선택하세요.",
             view=AdminUserSelectView(),
