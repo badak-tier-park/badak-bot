@@ -180,7 +180,7 @@ class User(commands.Cog):
                 await session.commit()
 
             logger.info(f"[닉네임변경신청] {interaction.user} | {user.nickname} → {nickname}")
-            await interaction.followup.send(f"{interaction.user.mention} 닉네임 변경 신청이 완료됐습니다. 관리자 승인을 기다려주세요.")
+            await interaction.followup.send(f"{interaction.user.mention}({user.nickname})님의 닉네임 변경 신청이 완료됐습니다. 관리자 승인을 기다려주세요.")
         except Exception as e:
             logger.error(f"[닉네임변경신청 오류] {e}")
             await interaction.followup.send("오류가 발생했습니다. 관리자에게 문의해주세요.", ephemeral=True)
@@ -232,7 +232,7 @@ class User(commands.Cog):
                 await session.commit()
 
             logger.info(f"[종족변경신청] {interaction.user} | {user.race} → {race}")
-            await interaction.followup.send(f"{interaction.user.mention} 종족 변경 신청이 완료됐습니다. 관리자 승인을 기다려주세요.")
+            await interaction.followup.send(f"{interaction.user.mention}({user.nickname})님의 종족 변경 신청이 완료됐습니다. 관리자 승인을 기다려주세요.")
         except Exception as e:
             logger.error(f"[종족변경신청 오류] {e}")
             await interaction.followup.send("오류가 발생했습니다. 관리자에게 문의해주세요.", ephemeral=True)
