@@ -157,7 +157,7 @@ class NicknameApprovalView(discord.ui.View):
         try:
             channel = interaction.guild.get_channel(req.channel_id)
             member = await interaction.guild.fetch_member(req.discord_id)
-            await channel.send(f"{member.mention} 닉네임 변경 신청이 승인됐습니다. {req.old_value} → **{req.new_value}**")
+            await channel.send(f"{member.mention}({req.new_value})님의 닉네임 변경 신청이 승인됐습니다. {req.old_value} → **{req.new_value}**")
         except Exception:
             pass
 
@@ -191,7 +191,7 @@ class NicknameApprovalView(discord.ui.View):
         try:
             channel = interaction.guild.get_channel(req.channel_id)
             member = await interaction.guild.fetch_member(req.discord_id)
-            await channel.send(f"{member.mention} 닉네임 변경 신청이 거절됐습니다.")
+            await channel.send(f"{member.mention}({req.old_value})님의 닉네임 변경 신청이 거절됐습니다.")
         except Exception:
             pass
 
@@ -235,9 +235,15 @@ class RaceApprovalView(discord.ui.View):
             await session.commit()
 
         try:
+            async with AsyncSessionLocal() as session:
+                nickname_result = await session.execute(
+                    text("SELECT nickname FROM users WHERE discord_id = :discord_id"),
+                    {"discord_id": req.discord_id}
+                )
+                nickname = (nickname_result.fetchone() or [req.discord_id])[0]
             channel = interaction.guild.get_channel(req.channel_id)
             member = await interaction.guild.fetch_member(req.discord_id)
-            await channel.send(f"{member.mention} 종족 변경 신청이 승인됐습니다. {req.old_value} → **{req.new_value}**")
+            await channel.send(f"{member.mention}({nickname})님의 종족 변경 신청이 승인됐습니다. {req.old_value} → **{req.new_value}**")
         except Exception:
             pass
 
@@ -269,9 +275,15 @@ class RaceApprovalView(discord.ui.View):
             await session.commit()
 
         try:
+            async with AsyncSessionLocal() as session:
+                nickname_result = await session.execute(
+                    text("SELECT nickname FROM users WHERE discord_id = :discord_id"),
+                    {"discord_id": req.discord_id}
+                )
+                nickname = (nickname_result.fetchone() or [req.discord_id])[0]
             channel = interaction.guild.get_channel(req.channel_id)
             member = await interaction.guild.fetch_member(req.discord_id)
-            await channel.send(f"{member.mention} 종족 변경 신청이 거절됐습니다.")
+            await channel.send(f"{member.mention}({nickname})님의 종족 변경 신청이 거절됐습니다.")
         except Exception:
             pass
 
