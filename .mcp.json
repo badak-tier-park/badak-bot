@@ -9,7 +9,7 @@
         "--unsafe"
       ],
       "env": {
-        "PGPASSWORD": "badak!@34"
+        "PGPASSWORD": "badak1234"
       }
     }
   }
