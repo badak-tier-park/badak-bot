@@ -124,45 +124,78 @@ class AdminRemoveView(discord.ui.View):
 
 
 # -----------------------------------------------
-# View: 닉네임 변경 승인/거절
+# View: 닉네임 변경 승인/거절 (Persistent)
 # -----------------------------------------------
 class NicknameApprovalView(discord.ui.View):
-    def __init__(self, discord_id: int, new_nickname: str):
+    def __init__(self):
         super().__init__(timeout=None)
-        self.discord_id = discord_id
-        self.new_nickname = new_nickname
 
-    @discord.ui.button(label="승인", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="승인", style=discord.ButtonStyle.success, custom_id="approve_nickname")
     async def approve(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                text("SELECT * FROM change_requests WHERE message_id = :message_id AND type = 'nickname' AND status = 'pending'"),
+                {"message_id": interaction.message.id}
+            )
+            req = result.fetchone()
+
+        if not req:
+            await interaction.response.edit_message(content="이미 처리된 요청입니다.", embed=None, view=None)
+            return
+
         async with AsyncSessionLocal() as session:
             await session.execute(
                 text("UPDATE users SET nickname = :nickname, updated_at = NOW() WHERE discord_id = :discord_id"),
-                {"nickname": self.new_nickname, "discord_id": self.discord_id}
+                {"nickname": req.new_value, "discord_id": req.discord_id}
+            )
+            await session.execute(
+                text("UPDATE change_requests SET status = 'approved' WHERE id = :id"),
+                {"id": req.id}
             )
             await session.commit()
 
         try:
-            member = await interaction.guild.fetch_member(self.discord_id)
-            await member.send(f"✅ 닉네임 변경 신청이 승인됐습니다.\n변경된 닉네임: **{self.new_nickname}**")
+            channel = interaction.guild.get_channel(req.channel_id)
+            member = await interaction.guild.fetch_member(req.discord_id)
+            await channel.send(f"{member.mention} 닉네임 변경 신청이 승인됐습니다. {req.old_value} → **{req.new_value}**")
         except Exception:
             pass
 
-        logger.info(f"[닉네임변경승인] {interaction.user} → discord_id: {self.discord_id} | 닉네임: {self.new_nickname}")
+        logger.info(f"[닉네임변경승인] {interaction.user} → {req.old_value} → {req.new_value}")
         await interaction.response.edit_message(
-            content=f"✅ 닉네임 변경 승인 완료 - by {interaction.user.display_name} -",
+            content=f"✅ 닉네임 변경 승인 완료 ({req.old_value} → {req.new_value}) - by {interaction.user.display_name} -",
             embed=None,
             view=None
         )
 
-    @discord.ui.button(label="거절", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="거절", style=discord.ButtonStyle.danger, custom_id="reject_nickname")
     async def reject(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                text("SELECT * FROM change_requests WHERE message_id = :message_id AND type = 'nickname' AND status = 'pending'"),
+                {"message_id": interaction.message.id}
+            )
+            req = result.fetchone()
+
+        if not req:
+            await interaction.response.edit_message(content="이미 처리된 요청입니다.", embed=None, view=None)
+            return
+
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                text("UPDATE change_requests SET status = 'rejected' WHERE id = :id"),
+                {"id": req.id}
+            )
+            await session.commit()
+
         try:
-            member = await interaction.guild.fetch_member(self.discord_id)
-            await member.send("❌ 닉네임 변경 신청이 거절됐습니다.")
+            channel = interaction.guild.get_channel(req.channel_id)
+            member = await interaction.guild.fetch_member(req.discord_id)
+            await channel.send(f"{member.mention} 닉네임 변경 신청이 거절됐습니다.")
         except Exception:
             pass
 
-        logger.info(f"[닉네임변경거절] {interaction.user} → discord_id: {self.discord_id}")
+        logger.info(f"[닉네임변경거절] {interaction.user} → {req.old_value} → {req.new_value}")
         await interaction.response.edit_message(
             content=f"❌ 닉네임 변경 거절 - by {interaction.user.display_name} -",
             embed=None,
@@ -171,46 +204,78 @@ class NicknameApprovalView(discord.ui.View):
 
 
 # -----------------------------------------------
-# View: 종족 변경 승인/거절
+# View: 종족 변경 승인/거절 (Persistent)
 # -----------------------------------------------
 class RaceApprovalView(discord.ui.View):
-    def __init__(self, discord_id: int, nickname: str, new_race: str):
+    def __init__(self):
         super().__init__(timeout=None)
-        self.discord_id = discord_id
-        self.nickname = nickname
-        self.new_race = new_race
 
-    @discord.ui.button(label="승인", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="승인", style=discord.ButtonStyle.success, custom_id="approve_race")
     async def approve(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                text("SELECT * FROM change_requests WHERE message_id = :message_id AND type = 'race' AND status = 'pending'"),
+                {"message_id": interaction.message.id}
+            )
+            req = result.fetchone()
+
+        if not req:
+            await interaction.response.edit_message(content="이미 처리된 요청입니다.", embed=None, view=None)
+            return
+
         async with AsyncSessionLocal() as session:
             await session.execute(
                 text("UPDATE users SET race = :race, updated_at = NOW() WHERE discord_id = :discord_id"),
-                {"race": self.new_race, "discord_id": self.discord_id}
+                {"race": req.new_value, "discord_id": req.discord_id}
+            )
+            await session.execute(
+                text("UPDATE change_requests SET status = 'approved' WHERE id = :id"),
+                {"id": req.id}
             )
             await session.commit()
 
         try:
-            member = await interaction.guild.fetch_member(self.discord_id)
-            await member.send(f"✅ 종족 변경 신청이 승인됐습니다.\n변경된 종족: **{self.new_race}**")
+            channel = interaction.guild.get_channel(req.channel_id)
+            member = await interaction.guild.fetch_member(req.discord_id)
+            await channel.send(f"{member.mention} 종족 변경 신청이 승인됐습니다. {req.old_value} → **{req.new_value}**")
         except Exception:
             pass
 
-        logger.info(f"[종족변경승인] {interaction.user} → {self.nickname} | 종족: {self.new_race}")
+        logger.info(f"[종족변경승인] {interaction.user} → {req.old_value} → {req.new_value}")
         await interaction.response.edit_message(
-            content=f"✅ 종족 변경 승인 완료 - by {interaction.user.display_name} -",
+            content=f"✅ 종족 변경 승인 완료 ({req.old_value} → {req.new_value}) - by {interaction.user.display_name} -",
             embed=None,
             view=None
         )
 
-    @discord.ui.button(label="거절", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="거절", style=discord.ButtonStyle.danger, custom_id="reject_race")
     async def reject(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                text("SELECT * FROM change_requests WHERE message_id = :message_id AND type = 'race' AND status = 'pending'"),
+                {"message_id": interaction.message.id}
+            )
+            req = result.fetchone()
+
+        if not req:
+            await interaction.response.edit_message(content="이미 처리된 요청입니다.", embed=None, view=None)
+            return
+
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                text("UPDATE change_requests SET status = 'rejected' WHERE id = :id"),
+                {"id": req.id}
+            )
+            await session.commit()
+
         try:
-            member = await interaction.guild.fetch_member(self.discord_id)
-            await member.send("❌ 종족 변경 신청이 거절됐습니다.")
+            channel = interaction.guild.get_channel(req.channel_id)
+            member = await interaction.guild.fetch_member(req.discord_id)
+            await channel.send(f"{member.mention} 종족 변경 신청이 거절됐습니다.")
         except Exception:
             pass
 
-        logger.info(f"[종족변경거절] {interaction.user} → {self.nickname}")
+        logger.info(f"[종족변경거절] {interaction.user} → {req.old_value} → {req.new_value}")
         await interaction.response.edit_message(
             content=f"❌ 종족 변경 거절 - by {interaction.user.display_name} -",
             embed=None,
