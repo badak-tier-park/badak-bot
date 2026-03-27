@@ -124,6 +124,28 @@ class AdminRemoveView(discord.ui.View):
 
 
 # -----------------------------------------------
+# Helpers
+# -----------------------------------------------
+async def fetch_pending_request(message_id: int, req_type: str):
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            text("SELECT * FROM change_requests WHERE message_id = :message_id AND type = :type AND status = 'pending'"),
+            {"message_id": message_id, "type": req_type}
+        )
+        return result.fetchone()
+
+
+async def get_user_nickname(discord_id: int) -> str:
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            text("SELECT nickname FROM users WHERE discord_id = :discord_id"),
+            {"discord_id": discord_id}
+        )
+        row = result.fetchone()
+        return row[0] if row else str(discord_id)
+
+
+# -----------------------------------------------
 # View: 닉네임 변경 승인/거절 (Persistent)
 # -----------------------------------------------
 class NicknameApprovalView(discord.ui.View):
@@ -132,12 +154,7 @@ class NicknameApprovalView(discord.ui.View):
 
     @discord.ui.button(label="승인", style=discord.ButtonStyle.success, custom_id="approve_nickname")
     async def approve(self, interaction: discord.Interaction, _button: discord.ui.Button):
-        async with AsyncSessionLocal() as session:
-            result = await session.execute(
-                text("SELECT * FROM change_requests WHERE message_id = :message_id AND type = 'nickname' AND status = 'pending'"),
-                {"message_id": interaction.message.id}
-            )
-            req = result.fetchone()
+        req = await fetch_pending_request(interaction.message.id, "nickname")
 
         if not req:
             await interaction.response.edit_message(content="이미 처리된 요청입니다.", embed=None, view=None)
@@ -170,12 +187,7 @@ class NicknameApprovalView(discord.ui.View):
 
     @discord.ui.button(label="거절", style=discord.ButtonStyle.danger, custom_id="reject_nickname")
     async def reject(self, interaction: discord.Interaction, _button: discord.ui.Button):
-        async with AsyncSessionLocal() as session:
-            result = await session.execute(
-                text("SELECT * FROM change_requests WHERE message_id = :message_id AND type = 'nickname' AND status = 'pending'"),
-                {"message_id": interaction.message.id}
-            )
-            req = result.fetchone()
+        req = await fetch_pending_request(interaction.message.id, "nickname")
 
         if not req:
             await interaction.response.edit_message(content="이미 처리된 요청입니다.", embed=None, view=None)
@@ -212,12 +224,7 @@ class RaceApprovalView(discord.ui.View):
 
     @discord.ui.button(label="승인", style=discord.ButtonStyle.success, custom_id="approve_race")
     async def approve(self, interaction: discord.Interaction, _button: discord.ui.Button):
-        async with AsyncSessionLocal() as session:
-            result = await session.execute(
-                text("SELECT * FROM change_requests WHERE message_id = :message_id AND type = 'race' AND status = 'pending'"),
-                {"message_id": interaction.message.id}
-            )
-            req = result.fetchone()
+        req = await fetch_pending_request(interaction.message.id, "race")
 
         if not req:
             await interaction.response.edit_message(content="이미 처리된 요청입니다.", embed=None, view=None)
@@ -235,12 +242,7 @@ class RaceApprovalView(discord.ui.View):
             await session.commit()
 
         try:
-            async with AsyncSessionLocal() as session:
-                nickname_result = await session.execute(
-                    text("SELECT nickname FROM users WHERE discord_id = :discord_id"),
-                    {"discord_id": req.discord_id}
-                )
-                nickname = (nickname_result.fetchone() or [req.discord_id])[0]
+            nickname = await get_user_nickname(req.discord_id)
             channel = interaction.guild.get_channel(req.channel_id)
             member = await interaction.guild.fetch_member(req.discord_id)
             await channel.send(f"{member.mention}({nickname})님의 종족 변경 신청이 승인됐습니다. {req.old_value} → **{req.new_value}**")
@@ -256,12 +258,7 @@ class RaceApprovalView(discord.ui.View):
 
     @discord.ui.button(label="거절", style=discord.ButtonStyle.danger, custom_id="reject_race")
     async def reject(self, interaction: discord.Interaction, _button: discord.ui.Button):
-        async with AsyncSessionLocal() as session:
-            result = await session.execute(
-                text("SELECT * FROM change_requests WHERE message_id = :message_id AND type = 'race' AND status = 'pending'"),
-                {"message_id": interaction.message.id}
-            )
-            req = result.fetchone()
+        req = await fetch_pending_request(interaction.message.id, "race")
 
         if not req:
             await interaction.response.edit_message(content="이미 처리된 요청입니다.", embed=None, view=None)
@@ -275,12 +272,7 @@ class RaceApprovalView(discord.ui.View):
             await session.commit()
 
         try:
-            async with AsyncSessionLocal() as session:
-                nickname_result = await session.execute(
-                    text("SELECT nickname FROM users WHERE discord_id = :discord_id"),
-                    {"discord_id": req.discord_id}
-                )
-                nickname = (nickname_result.fetchone() or [req.discord_id])[0]
+            nickname = await get_user_nickname(req.discord_id)
             channel = interaction.guild.get_channel(req.channel_id)
             member = await interaction.guild.fetch_member(req.discord_id)
             await channel.send(f"{member.mention}({nickname})님의 종족 변경 신청이 거절됐습니다.")
