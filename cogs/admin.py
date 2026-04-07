@@ -24,8 +24,10 @@ class AdminUserSelectView(discord.ui.View):
 
     @discord.ui.button(label="등록", style=discord.ButtonStyle.primary)
     async def confirm(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        await interaction.response.defer()
+        
         if not self.selected_user:
-            await interaction.response.send_message("유저를 선택해주세요.", ephemeral=True)
+            await interaction.followup.send("유저를 선택해주세요.", ephemeral=True)
             return
 
         async with AsyncSessionLocal() as session:
@@ -41,11 +43,11 @@ class AdminUserSelectView(discord.ui.View):
             executor_nickname = (executor.fetchone() or [interaction.user.display_name])[0]
 
         if not user:
-            await interaction.response.edit_message(content="등록되지 않은 유저입니다.", view=None)
+            await interaction.edit_original_response(content="등록되지 않은 유저입니다.", view=None)
             return
 
         if user.is_admin:
-            await interaction.response.edit_message(content="이미 관리자입니다.", view=None)
+            await interaction.edit_original_response(content="이미 관리자입니다.", view=None)
             return
 
         async with AsyncSessionLocal() as session:
@@ -57,12 +59,17 @@ class AdminUserSelectView(discord.ui.View):
 
         guild = interaction.guild
         role = guild.get_role(config.ADMIN_ROLE_ID)
-        member = await guild.fetch_member(self.selected_user.id)
-        if role and member:
-            await member.add_roles(role)
+        try:
+            member = await guild.fetch_member(self.selected_user.id)
+            if role and member:
+                await member.add_roles(role)
+        except discord.Forbidden:
+            logger.warning(f"[관리자등록] 권한 부족 (봇 역할 계층순위 또는 권한 확인 필요): 유저={self.selected_user.id}")
+        except Exception as e:
+            logger.warning(f"[관리자등록] 역할 지급 중 오류: {e}")
 
         logger.info(f"[관리자등록] {interaction.user} (ID: {interaction.user.id}) → {user.nickname} (ID: {self.selected_user.id})")
-        await interaction.response.edit_message(content="✅ 완료됐습니다.", view=None)
+        await interaction.edit_original_response(content="✅ 완료됐습니다.", view=None)
         await interaction.channel.send(f"🛡️ **{user.nickname}** 이(가) 관리자로 등록됐습니다. - by {interaction.user.display_name}({executor_nickname}) -")
 
 
@@ -81,8 +88,10 @@ class AdminRemoveView(discord.ui.View):
 
     @discord.ui.button(label="해제", style=discord.ButtonStyle.danger)
     async def confirm(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        await interaction.response.defer()
+        
         if not self.selected_user:
-            await interaction.response.send_message("유저를 선택해주세요.", ephemeral=True)
+            await interaction.followup.send("유저를 선택해주세요.", ephemeral=True)
             return
 
         async with AsyncSessionLocal() as session:
@@ -98,11 +107,11 @@ class AdminRemoveView(discord.ui.View):
             executor_nickname = (executor.fetchone() or [interaction.user.display_name])[0]
 
         if not user:
-            await interaction.response.edit_message(content="등록되지 않은 유저입니다.", view=None)
+            await interaction.edit_original_response(content="등록되지 않은 유저입니다.", view=None)
             return
 
         if not user.is_admin:
-            await interaction.response.edit_message(content="관리자가 아닙니다.", view=None)
+            await interaction.edit_original_response(content="관리자가 아닙니다.", view=None)
             return
 
         async with AsyncSessionLocal() as session:
@@ -114,12 +123,17 @@ class AdminRemoveView(discord.ui.View):
 
         guild = interaction.guild
         role = guild.get_role(config.ADMIN_ROLE_ID)
-        member = await guild.fetch_member(self.selected_user.id)
-        if role and member:
-            await member.remove_roles(role)
+        try:
+            member = await guild.fetch_member(self.selected_user.id)
+            if role and member:
+                await member.remove_roles(role)
+        except discord.Forbidden:
+            logger.warning(f"[관리자해제] 권한 부족 (봇 역할 계층순위 또는 권한 확인 필요): 유저={self.selected_user.id}")
+        except Exception as e:
+            logger.warning(f"[관리자해제] 역할 회수 중 오류: {e}")
 
         logger.info(f"[관리자해제] {interaction.user} (ID: {interaction.user.id}) → {user.nickname} (ID: {self.selected_user.id})")
-        await interaction.response.edit_message(content="✅ 완료됐습니다.", view=None)
+        await interaction.edit_original_response(content="✅ 완료됐습니다.", view=None)
         await interaction.channel.send(f"🔓 **{user.nickname}** 의 관리자가 해제됐습니다. - by {interaction.user.display_name}({executor_nickname}) -")
 
 
