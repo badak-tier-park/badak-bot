@@ -8,6 +8,34 @@ from logger import logger
 
 
 # -----------------------------------------------
+# View: 유저 목록 페이지네이션
+# -----------------------------------------------
+class UserListPaginationView(discord.ui.View):
+    def __init__(self, pages, make_embed):
+        super().__init__(timeout=60)
+        self.pages = pages
+        self.make_embed = make_embed
+        self.current = 0
+        self._update_buttons()
+
+    def _update_buttons(self):
+        self.prev_button.disabled = self.current == 0
+        self.next_button.disabled = self.current == len(self.pages) - 1
+
+    @discord.ui.button(label="◀", style=discord.ButtonStyle.secondary)
+    async def prev_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.current -= 1
+        self._update_buttons()
+        await interaction.response.edit_message(embed=self.make_embed(self.current), view=self)
+
+    @discord.ui.button(label="▶", style=discord.ButtonStyle.secondary)
+    async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.current += 1
+        self._update_buttons()
+        await interaction.response.edit_message(embed=self.make_embed(self.current), view=self)
+
+
+# -----------------------------------------------
 # Modal: 닉네임 입력
 # -----------------------------------------------
 class RegisterModal(discord.ui.Modal, title="유저 등록"):
@@ -119,6 +147,8 @@ class User(commands.Cog):
 
     @app_commands.command(name="유저목록", description="등록된 유저 목록을 확인합니다")
     async def user_list(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+
         async with AsyncSessionLocal() as session:
             result = await session.execute(
                 text("SELECT nickname, race, tier FROM users ORDER BY created_at DESC")
@@ -126,17 +156,20 @@ class User(commands.Cog):
             users = result.fetchall()
 
         if not users:
-            await interaction.response.send_message("등록된 유저가 없습니다.", ephemeral=True)
+            await interaction.followup.send("등록된 유저가 없습니다.", ephemeral=True)
             return
 
-        embed = discord.Embed(title="📋 유저 목록", color=0x00aaff)
-        for user in users:
-            embed.add_field(
-                name="\u200b",
-                value=f"{user.nickname} / {user.race} / {user.tier}",
-                inline=False
-            )
-        await interaction.response.send_message(embed=embed)
+        lines = [f"{u.nickname} / {u.race} / {u.tier}" for u in users]
+        pages = [lines[i:i+20] for i in range(0, len(lines), 20)]
+
+        def make_embed(page_idx):
+            embed = discord.Embed(title="📋 유저 목록", color=0x00aaff)
+            embed.add_field(name="\u200b", value="\n".join(pages[page_idx]), inline=False)
+            embed.set_footer(text=f"{page_idx + 1} / {len(pages)} 페이지")
+            return embed
+
+        view = UserListPaginationView(pages, make_embed)
+        await interaction.followup.send(embed=make_embed(0), view=view)
 
     @app_commands.command(name="닉네임변경신청", description="닉네임 변경을 신청합니다 (관리자 승인 필요)")
     @app_commands.describe(nickname="변경할 닉네임")
