@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-from config import GUILD_ID, ADMIN_ROLE_ID
+from config import GUILD_ID
 from database import AsyncSessionLocal
 from sqlalchemy import text
 from logger import logger
@@ -56,7 +56,7 @@ class AdminUserSelectView(discord.ui.View):
             await session.commit()
 
         guild = interaction.guild
-        role = guild.get_role(ADMIN_ROLE_ID)
+        role = guild.get_role(config.ADMIN_ROLE_ID)
         member = await guild.fetch_member(self.selected_user.id)
         if role and member:
             await member.add_roles(role)
