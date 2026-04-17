@@ -1,7 +1,8 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-from config import GUILD_ID, ADMIN_CHANNEL_ID
+from config import GUILD_ID
+import config
 from database import AsyncSessionLocal
 from sqlalchemy import text
 from logger import logger
@@ -196,14 +197,18 @@ class User(commands.Cog):
                 req_id = result.fetchone().id
                 await session.commit()
 
-            admin_channel = await self.bot.fetch_channel(ADMIN_CHANNEL_ID)
+            admin_channel = await self.bot.fetch_channel(config.ADMIN_CHANNEL_ID)
             embed = discord.Embed(title="📝 닉네임 변경 신청", color=0xffa500)
             embed.add_field(name="신청자", value=f"{interaction.user.mention}", inline=False)
             embed.add_field(name="현재 닉네임", value=user.nickname, inline=False)
             embed.add_field(name="변경 닉네임", value=nickname, inline=False)
 
             from cogs.admin import NicknameApprovalView
-            message = await admin_channel.send(embed=embed, view=NicknameApprovalView())
+            try:
+                message = await admin_channel.send(embed=embed, view=NicknameApprovalView())
+            except discord.Forbidden:
+                await interaction.followup.send("❌ 관리자 채널에 메시지를 보낼 수 없습니다. 봇의 채널 접근 권한을 확인해주세요.", ephemeral=True)
+                return
 
             async with AsyncSessionLocal() as session:
                 await session.execute(
@@ -247,7 +252,7 @@ class User(commands.Cog):
                 req_id = result.fetchone().id
                 await session.commit()
 
-            admin_channel = await self.bot.fetch_channel(ADMIN_CHANNEL_ID)
+            admin_channel = await self.bot.fetch_channel(config.ADMIN_CHANNEL_ID)
             embed = discord.Embed(title="📝 종족 변경 신청", color=0xffa500)
             embed.add_field(name="신청자", value=f"{interaction.user.mention}", inline=False)
             embed.add_field(name="닉네임", value=user.nickname, inline=False)
@@ -255,7 +260,11 @@ class User(commands.Cog):
             embed.add_field(name="변경 종족", value=race, inline=False)
 
             from cogs.admin import RaceApprovalView
-            message = await admin_channel.send(embed=embed, view=RaceApprovalView())
+            try:
+                message = await admin_channel.send(embed=embed, view=RaceApprovalView())
+            except discord.Forbidden:
+                await interaction.followup.send("❌ 관리자 채널에 메시지를 보낼 수 없습니다. 봇의 채널 접근 권한을 확인해주세요.", ephemeral=True)
+                return
 
             async with AsyncSessionLocal() as session:
                 await session.execute(
@@ -268,6 +277,64 @@ class User(commands.Cog):
             await interaction.followup.send(f"{interaction.user.mention}({user.nickname})님의 종족 변경 신청이 완료됐습니다. 관리자 승인을 기다려주세요.")
         except Exception as e:
             logger.error(f"[종족변경신청 오류] {e}")
+            await interaction.followup.send("오류가 발생했습니다. 관리자에게 문의해주세요.", ephemeral=True)
+
+    @app_commands.command(name="티어변경신청", description="티어 변경을 신청합니다 (관리자 승인 필요)")
+    @app_commands.choices(tier=[
+        app_commands.Choice(name="A", value="A"),
+        app_commands.Choice(name="B", value="B"),
+        app_commands.Choice(name="C", value="C"),
+        app_commands.Choice(name="D", value="D"),
+        app_commands.Choice(name="E", value="E"),
+    ])
+    async def request_tier(self, interaction: discord.Interaction, tier: str):
+        await interaction.response.defer()
+
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                text("SELECT nickname, tier FROM users WHERE discord_id = :discord_id"),
+                {"discord_id": interaction.user.id}
+            )
+            user = result.fetchone()
+
+        if not user:
+            await interaction.followup.send("등록된 유저가 아닙니다. `/유저등록`을 먼저 해주세요.", ephemeral=True)
+            return
+
+        try:
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    text("INSERT INTO change_requests (type, discord_id, old_value, new_value, channel_id) VALUES ('tier', :discord_id, :old_value, :new_value, :channel_id) RETURNING id"),
+                    {"discord_id": interaction.user.id, "old_value": user.tier, "new_value": tier, "channel_id": interaction.channel_id}
+                )
+                req_id = result.fetchone().id
+                await session.commit()
+
+            admin_channel = await self.bot.fetch_channel(config.ADMIN_CHANNEL_ID)
+            embed = discord.Embed(title="📝 티어 변경 신청", color=0xffa500)
+            embed.add_field(name="신청자", value=f"{interaction.user.mention}", inline=False)
+            embed.add_field(name="닉네임", value=user.nickname, inline=False)
+            embed.add_field(name="현재 티어", value=user.tier, inline=False)
+            embed.add_field(name="변경 티어", value=tier, inline=False)
+
+            from cogs.admin import TierApprovalView
+            try:
+                message = await admin_channel.send(embed=embed, view=TierApprovalView())
+            except discord.Forbidden:
+                await interaction.followup.send("❌ 관리자 채널에 메시지를 보낼 수 없습니다. 봇의 채널 접근 권한을 확인해주세요.", ephemeral=True)
+                return
+
+            async with AsyncSessionLocal() as session:
+                await session.execute(
+                    text("UPDATE change_requests SET message_id = :message_id WHERE id = :id"),
+                    {"message_id": message.id, "id": req_id}
+                )
+                await session.commit()
+
+            logger.info(f"[티어변경신청] {interaction.user} | {user.tier} → {tier}")
+            await interaction.followup.send(f"{interaction.user.mention}({user.nickname})님의 티어 변경 신청이 완료됐습니다. 관리자 승인을 기다려주세요.")
+        except Exception as e:
+            logger.error(f"[티어변경신청 오류] {e}")
             await interaction.followup.send("오류가 발생했습니다. 관리자에게 문의해주세요.", ephemeral=True)
 
 
