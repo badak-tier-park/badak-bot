@@ -152,7 +152,7 @@ class User(commands.Cog):
 
         async with AsyncSessionLocal() as session:
             result = await session.execute(
-                text("SELECT nickname, race, tier FROM users ORDER BY created_at DESC")
+                text("SELECT nickname, race, tier, aliases FROM users ORDER BY created_at DESC")
             )
             users = result.fetchall()
 
@@ -160,7 +160,10 @@ class User(commands.Cog):
             await interaction.followup.send("등록된 유저가 없습니다.", ephemeral=True)
             return
 
-        lines = [f"{u.nickname} / {u.race} / {u.tier}" for u in users]
+        lines = []
+        for u in users:
+            alias_str = f" ({', '.join(u.aliases)})" if u.aliases else ""
+            lines.append(f"{u.nickname} / {u.race} / {u.tier}{alias_str}")
         pages = [lines[i:i+20] for i in range(0, len(lines), 20)]
 
         def make_embed(page_idx):
@@ -336,6 +339,52 @@ class User(commands.Cog):
         except Exception as e:
             logger.error(f"[티어변경신청 오류] {e}")
             await interaction.followup.send("오류가 발생했습니다. 관리자에게 문의해주세요.", ephemeral=True)
+
+
+    @app_commands.command(name="별칭등록", description="본인 또는 다른 유저의 별칭을 추가합니다 (즉시 적용)")
+    @app_commands.rename(alias="별칭", target_user="대상유저")
+    @app_commands.describe(alias="등록할 별칭", target_user="타인의 별칭을 추가할 경우 선택 (본인일 경우 비워둠)")
+    async def register_alias(self, interaction: discord.Interaction, alias: str, target_user: discord.Member = None):
+        await interaction.response.defer()
+
+        target = target_user if target_user else interaction.user
+
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                text("SELECT nickname FROM users WHERE discord_id = :discord_id"),
+                {"discord_id": target.id}
+            )
+            user = result.fetchone()
+
+        if not user:
+            msg = "대상 유저가 등록되어 있지 않습니다." if target_user else "등록된 유저가 아닙니다. `/유저등록`을 먼저 해주세요."
+            await interaction.followup.send(msg, ephemeral=True)
+            return
+
+        try:
+            async with AsyncSessionLocal() as session:
+                check_res = await session.execute(
+                    text("SELECT aliases FROM users WHERE discord_id = :discord_id"),
+                    {"discord_id": target.id}
+                )
+                user_data = check_res.fetchone()
+                current_aliases = user_data.aliases if user_data and user_data.aliases else []
+
+                if alias in current_aliases:
+                    await interaction.followup.send("이미 등록되어 있는 별칭입니다.", ephemeral=True)
+                    return
+
+                await session.execute(
+                    text("UPDATE users SET aliases = COALESCE(aliases, '{}'::text[]) || CAST(:new_alias AS text) WHERE discord_id = :discord_id"),
+                    {"new_alias": alias, "discord_id": target.id}
+                )
+                await session.commit()
+
+            logger.info(f"[별칭즉시등록] {interaction.user} -> {target} | 별칭: {alias}")
+            await interaction.followup.send(f"✅ {target.mention}({user.nickname})님의 별칭 **'{alias}'** 등록이 완료됐습니다!")
+        except Exception as e:
+            logger.error(f"[별칭등록 오류] {e}")
+            await interaction.followup.send("오류가 발생했습니다. 개발자에게 문의해주세요.", ephemeral=True)
 
 
 async def setup(bot: commands.Bot):
