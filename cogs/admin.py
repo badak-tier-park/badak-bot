@@ -24,8 +24,10 @@ class AdminUserSelectView(discord.ui.View):
 
     @discord.ui.button(label="등록", style=discord.ButtonStyle.primary)
     async def confirm(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        await interaction.response.defer()
+        
         if not self.selected_user:
-            await interaction.response.send_message("유저를 선택해주세요.", ephemeral=True)
+            await interaction.followup.send("유저를 선택해주세요.", ephemeral=True)
             return
 
         async with AsyncSessionLocal() as session:
@@ -41,11 +43,11 @@ class AdminUserSelectView(discord.ui.View):
             executor_nickname = (executor.fetchone() or [interaction.user.display_name])[0]
 
         if not user:
-            await interaction.response.edit_message(content="등록되지 않은 유저입니다.", view=None)
+            await interaction.edit_original_response(content="등록되지 않은 유저입니다.", view=None)
             return
 
         if user.is_admin:
-            await interaction.response.edit_message(content="이미 관리자입니다.", view=None)
+            await interaction.edit_original_response(content="이미 관리자입니다.", view=None)
             return
 
         async with AsyncSessionLocal() as session:
@@ -57,12 +59,17 @@ class AdminUserSelectView(discord.ui.View):
 
         guild = interaction.guild
         role = guild.get_role(config.ADMIN_ROLE_ID)
-        member = await guild.fetch_member(self.selected_user.id)
-        if role and member:
-            await member.add_roles(role)
+        try:
+            member = await guild.fetch_member(self.selected_user.id)
+            if role and member:
+                await member.add_roles(role)
+        except discord.Forbidden:
+            logger.warning(f"[관리자등록] 권한 부족 (봇 역할 계층순위 또는 권한 확인 필요): 유저={self.selected_user.id}")
+        except Exception as e:
+            logger.warning(f"[관리자등록] 역할 지급 중 오류: {e}")
 
         logger.info(f"[관리자등록] {interaction.user} (ID: {interaction.user.id}) → {user.nickname} (ID: {self.selected_user.id})")
-        await interaction.response.edit_message(content="✅ 완료됐습니다.", view=None)
+        await interaction.edit_original_response(content="✅ 완료됐습니다.", view=None)
         await interaction.channel.send(f"🛡️ **{user.nickname}** 이(가) 관리자로 등록됐습니다. - by {interaction.user.display_name}({executor_nickname}) -")
 
 
@@ -81,8 +88,10 @@ class AdminRemoveView(discord.ui.View):
 
     @discord.ui.button(label="해제", style=discord.ButtonStyle.danger)
     async def confirm(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        await interaction.response.defer()
+        
         if not self.selected_user:
-            await interaction.response.send_message("유저를 선택해주세요.", ephemeral=True)
+            await interaction.followup.send("유저를 선택해주세요.", ephemeral=True)
             return
 
         async with AsyncSessionLocal() as session:
@@ -98,11 +107,11 @@ class AdminRemoveView(discord.ui.View):
             executor_nickname = (executor.fetchone() or [interaction.user.display_name])[0]
 
         if not user:
-            await interaction.response.edit_message(content="등록되지 않은 유저입니다.", view=None)
+            await interaction.edit_original_response(content="등록되지 않은 유저입니다.", view=None)
             return
 
         if not user.is_admin:
-            await interaction.response.edit_message(content="관리자가 아닙니다.", view=None)
+            await interaction.edit_original_response(content="관리자가 아닙니다.", view=None)
             return
 
         async with AsyncSessionLocal() as session:
@@ -114,12 +123,17 @@ class AdminRemoveView(discord.ui.View):
 
         guild = interaction.guild
         role = guild.get_role(config.ADMIN_ROLE_ID)
-        member = await guild.fetch_member(self.selected_user.id)
-        if role and member:
-            await member.remove_roles(role)
+        try:
+            member = await guild.fetch_member(self.selected_user.id)
+            if role and member:
+                await member.remove_roles(role)
+        except discord.Forbidden:
+            logger.warning(f"[관리자해제] 권한 부족 (봇 역할 계층순위 또는 권한 확인 필요): 유저={self.selected_user.id}")
+        except Exception as e:
+            logger.warning(f"[관리자해제] 역할 회수 중 오류: {e}")
 
         logger.info(f"[관리자해제] {interaction.user} (ID: {interaction.user.id}) → {user.nickname} (ID: {self.selected_user.id})")
-        await interaction.response.edit_message(content="✅ 완료됐습니다.", view=None)
+        await interaction.edit_original_response(content="✅ 완료됐습니다.", view=None)
         await interaction.channel.send(f"🔓 **{user.nickname}** 의 관리자가 해제됐습니다. - by {interaction.user.display_name}({executor_nickname}) -")
 
 
@@ -144,6 +158,33 @@ async def get_user_nickname(discord_id: int) -> str:
         row = result.fetchone()
         return row[0] if row else str(discord_id)
 
+
+async def sync_user_nickname_immediately(interaction: discord.Interaction, discord_id: int):
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            text("SELECT nickname, race, tier FROM users WHERE discord_id = :discord_id"),
+            {"discord_id": discord_id}
+        )
+        user = result.fetchone()
+        
+    if not user:
+        return
+        
+    target_nick = f"{user.nickname} / {user.race} / {user.tier}"
+    member = interaction.guild.get_member(discord_id)
+    if not member:
+        return
+
+    if member.nick != target_nick and member.display_name != target_nick:
+        try:
+            await member.edit(nick=target_nick)
+            logger.info(f"[닉네임동기화성공] {member.display_name} -> {target_nick}")
+        except discord.Forbidden:
+            logger.warning(f"[닉네임동기화실패] 권한 부족 (서버장 등): {member.display_name}")
+            try:
+                await member.send(f"⚠️ **닉네임 변경 안내**\n서버의 DB 정보가 업데이트되었으나, 디스코드 권한(서버장 등) 문제로 인해 자동 변경이 실패했습니다.\n원활한 서버 관리를 위해 디스코드 닉네임을 직접 **`{target_nick}`**(으)로 변경해 주시기 바랍니다.")
+            except discord.Forbidden:
+                pass
 
 # -----------------------------------------------
 # View: 닉네임 변경 승인/거절 (Persistent)
@@ -177,6 +218,8 @@ class NicknameApprovalView(discord.ui.View):
             await channel.send(f"{member.mention}({req.new_value})님의 닉네임 변경 신청이 승인됐습니다. {req.old_value} → **{req.new_value}**")
         except Exception:
             pass
+
+        await sync_user_nickname_immediately(interaction, req.discord_id)
 
         logger.info(f"[닉네임변경승인] {interaction.user} → {req.old_value} → {req.new_value}")
         await interaction.response.edit_message(
@@ -249,6 +292,8 @@ class RaceApprovalView(discord.ui.View):
         except Exception:
             pass
 
+        await sync_user_nickname_immediately(interaction, req.discord_id)
+
         logger.info(f"[종족변경승인] {interaction.user} → {req.old_value} → {req.new_value}")
         await interaction.response.edit_message(
             content=f"✅ 종족 변경 승인 완료 ({req.old_value} → {req.new_value}) - by {interaction.user.display_name} -",
@@ -288,6 +333,80 @@ class RaceApprovalView(discord.ui.View):
 
 
 # -----------------------------------------------
+# View: 티어 변경 승인/거절 (Persistent)
+# -----------------------------------------------
+class TierApprovalView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="승인", style=discord.ButtonStyle.success, custom_id="approve_tier")
+    async def approve(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        req = await fetch_pending_request(interaction.message.id, "tier")
+
+        if not req:
+            await interaction.response.edit_message(content="이미 처리된 요청입니다.", embed=None, view=None)
+            return
+
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                text("UPDATE users SET tier = :tier, updated_at = NOW() WHERE discord_id = :discord_id"),
+                {"tier": req.new_value, "discord_id": req.discord_id}
+            )
+            await session.execute(
+                text("UPDATE change_requests SET status = 'approved' WHERE id = :id"),
+                {"id": req.id}
+            )
+            await session.commit()
+
+        try:
+            nickname = await get_user_nickname(req.discord_id)
+            channel = interaction.guild.get_channel(req.channel_id)
+            member = await interaction.guild.fetch_member(req.discord_id)
+            await channel.send(f"{member.mention}({nickname})님의 티어 변경 신청이 승인됐습니다. {req.old_value} → **{req.new_value}**")
+        except Exception:
+            pass
+
+        await sync_user_nickname_immediately(interaction, req.discord_id)
+
+        logger.info(f"[티어변경승인] {interaction.user} → {req.old_value} → {req.new_value}")
+        await interaction.response.edit_message(
+            content=f"✅ 티어 변경 승인 완료 ({req.old_value} → {req.new_value}) - by {interaction.user.display_name} -",
+            embed=None,
+            view=None
+        )
+
+    @discord.ui.button(label="거절", style=discord.ButtonStyle.danger, custom_id="reject_tier")
+    async def reject(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        req = await fetch_pending_request(interaction.message.id, "tier")
+
+        if not req:
+            await interaction.response.edit_message(content="이미 처리된 요청입니다.", embed=None, view=None)
+            return
+
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                text("UPDATE change_requests SET status = 'rejected' WHERE id = :id"),
+                {"id": req.id}
+            )
+            await session.commit()
+
+        try:
+            nickname = await get_user_nickname(req.discord_id)
+            channel = interaction.guild.get_channel(req.channel_id)
+            member = await interaction.guild.fetch_member(req.discord_id)
+            await channel.send(f"{member.mention}({nickname})님의 티어 변경 신청이 거절됐습니다.")
+        except Exception:
+            pass
+
+        logger.info(f"[티어변경거절] {interaction.user} → {req.old_value} → {req.new_value}")
+        await interaction.response.edit_message(
+            content=f"❌ 티어 변경 거절 - by {interaction.user.display_name} -",
+            embed=None,
+            view=None
+        )
+
+
+# -----------------------------------------------
 # Cog: 관리자 관리 명령어
 # -----------------------------------------------
 class Admin(commands.Cog):
@@ -300,26 +419,26 @@ class Admin(commands.Cog):
         current_channel = interaction.guild.get_channel(config.ADMIN_CHANNEL_ID)
         role_text = current_role.mention if current_role else f"알 수 없음 (ID: {config.ADMIN_ROLE_ID})"
         channel_text = current_channel.mention if current_channel else f"알 수 없음 (ID: {config.ADMIN_CHANNEL_ID})"
+        sync_time_text = getattr(config, 'SYNC_TIME', '04:00')
         await interaction.response.send_message(
-            f"**현재 설정**\n관리자 역할: {role_text}\n관리자 채널: {channel_text}",
+            f"**현재 설정**\n관리자 역할: {role_text}\n관리자 채널: {channel_text}\n동기화 시간: {sync_time_text}",
             ephemeral=True
         )
 
-    @app_commands.command(name="설정", description="관리자 역할 또는 관리자 채널을 변경합니다")
-    @app_commands.rename(role="관리자역할", channel="관리자채널")
-    @app_commands.describe(role="변경할 관리자 역할", channel="변경할 관리자 채널")
+    @app_commands.command(name="설정", description="관리자 역할, 관리자 채널, 동기화 시간을 변경합니다")
+    @app_commands.rename(role="관리자역할", channel="관리자채널", sync_time="동기화시간")
+    @app_commands.describe(role="변경할 관리자 역할", channel="변경할 관리자 채널", sync_time="매일 동기화 시각 (HH:MM)")
     async def update_config(
         self,
         interaction: discord.Interaction,
         role: discord.Role = None,
         channel: discord.TextChannel = None,
+        sync_time: str = None,
     ):
-        if interaction.user.id != interaction.guild.owner_id:
-            await interaction.response.send_message("서버 장만 사용할 수 있는 명령어입니다.", ephemeral=True)
-            return
 
-        if not role and not channel:
-            await interaction.response.send_message("변경할 관리자역할 또는 관리자채널을 입력해주세요.", ephemeral=True)
+
+        if not role and not channel and not sync_time:
+            await interaction.response.send_message("변경할 설정(역할, 채널, 동기화시간)을 입력해주세요.", ephemeral=True)
             return
 
         env_path = find_dotenv()
@@ -336,6 +455,20 @@ class Admin(commands.Cog):
             config.ADMIN_CHANNEL_ID = channel.id
             lines.append(f"관리자 채널: {channel.mention}")
             logger.info(f"[설정] {interaction.user} → ADMIN_CHANNEL_ID={channel.id}")
+
+        if sync_time:
+            import re
+            if not re.match(r"^(?:[01]\d|2[0-3]):[0-5]\d$", sync_time):
+                await interaction.response.send_message("❌ 동기화 시간은 `HH:MM` 형식으로 입력해주세요 (예: 04:00).", ephemeral=True)
+                return
+            set_key(env_path, "SYNC_TIME", sync_time)
+            config.SYNC_TIME = sync_time
+            lines.append(f"동기화 시간: {sync_time}")
+            logger.info(f"[설정] {interaction.user} → SYNC_TIME={sync_time}")
+            
+            schedule_cog = self.bot.get_cog("Schedule")
+            if schedule_cog:
+                schedule_cog.restart_loop()
 
         await interaction.response.send_message(
             "✅ 설정이 변경됐습니다.\n" + "\n".join(lines),
