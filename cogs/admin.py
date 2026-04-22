@@ -140,6 +140,14 @@ class AdminRemoveView(discord.ui.View):
 # -----------------------------------------------
 # Helpers
 # -----------------------------------------------
+async def test_user_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            text("SELECT discord_id, nickname, race FROM users WHERE tier = 'Test' AND nickname ILIKE :current LIMIT 25"),
+            {"current": f"%{current}%"}
+        )
+        return [app_commands.Choice(name=f"{row.nickname} ({row.race}/Test)", value=str(row.discord_id)) for row in result.fetchall()]
+
 async def fetch_pending_request(message_id: int, req_type: str):
     async with AsyncSessionLocal() as session:
         result = await session.execute(
@@ -556,7 +564,8 @@ class Admin(commands.Cog):
         )
 
     @app_commands.command(name="테스트종료", description="해당 유저의 테스트를 완료하고 확정 티어를 부여합니다")
-    @app_commands.rename(target_user="대상유저", final_tier="확정티어")
+    @app_commands.rename(target_user_id_str="대상유저", final_tier="확정티어")
+    @app_commands.autocomplete(target_user_id_str=test_user_autocomplete)
     @app_commands.choices(final_tier=[
         app_commands.Choice(name="A", value="A"),
         app_commands.Choice(name="B", value="B"),
@@ -564,13 +573,16 @@ class Admin(commands.Cog):
         app_commands.Choice(name="D", value="D"),
         app_commands.Choice(name="E", value="E"),
     ])
-    async def complete_test(self, interaction: discord.Interaction, target_user: discord.Member, final_tier: str):
+    async def complete_test(self, interaction: discord.Interaction, target_user_id_str: str, final_tier: str):
         await interaction.response.defer()
+
+        target_user_id = int(target_user_id_str)
+        target_user = interaction.guild.get_member(target_user_id)
 
         async with AsyncSessionLocal() as session:
             result = await session.execute(
                 text("SELECT nickname, race, tier FROM users WHERE discord_id = :discord_id"),
-                {"discord_id": target_user.id}
+                {"discord_id": target_user_id}
             )
             user = result.fetchone()
 
@@ -585,11 +597,11 @@ class Admin(commands.Cog):
         async with AsyncSessionLocal() as session:
             await session.execute(
                 text("UPDATE users SET tier = :tier, updated_at = NOW() WHERE discord_id = :discord_id"),
-                {"tier": final_tier, "discord_id": target_user.id}
+                {"tier": final_tier, "discord_id": target_user_id}
             )
             await session.commit()
 
-        await sync_user_nickname_immediately(interaction, target_user.id)
+        await sync_user_nickname_immediately(interaction, target_user_id)
 
         if getattr(config, 'TEST_CHANNEL_ID', None):
             test_channel = interaction.guild.get_channel(config.TEST_CHANNEL_ID)
@@ -599,7 +611,7 @@ class Admin(commands.Cog):
                         if not message.embeds:
                             continue
                         embed = message.embeds[0]
-                        if embed.description and f"<@{target_user.id}>" in embed.description and "[테스트 대기]" in embed.title:
+                        if embed.description and f"<@{target_user_id}>" in embed.description and "[테스트 대기]" in embed.title:
                             embed.title = "✅ [테스트 완료]"
                             embed.color = 0x808080 
                             embed.description += f"\n\n**[결과]** 확정 티어: **{final_tier}**"
@@ -608,8 +620,9 @@ class Admin(commands.Cog):
                 except Exception as e:
                     logger.error(f"[테스트 메시지 수정 실패] {e}")
 
-        logger.info(f"[테스트종료] {interaction.user} 가 {target_user.display_name}의 테스트를 종료함. ({final_tier}으로 배정)")
-        await interaction.followup.send(f"✅ {target_user.mention}({user.nickname})님의 테스트가 종료되어 **{final_tier}** 티어로 배정되었습니다.")
+        display_name = target_user.display_name if target_user else user.nickname
+        logger.info(f"[테스트종료] {interaction.user} 가 {display_name}의 테스트를 종료함. ({final_tier}으로 배정)")
+        await interaction.followup.send(f"✅ <@{target_user_id}>({user.nickname})님의 테스트가 종료되어 **{final_tier}** 티어로 배정되었습니다.")
 
 
 async def setup(bot: commands.Bot):
