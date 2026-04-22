@@ -275,7 +275,7 @@ class RaceApprovalView(discord.ui.View):
 
         async with AsyncSessionLocal() as session:
             await session.execute(
-                text("UPDATE users SET race = :race, updated_at = NOW() WHERE discord_id = :discord_id"),
+                text("UPDATE users SET race = :race, tier = 'Test', updated_at = NOW() WHERE discord_id = :discord_id"),
                 {"race": req.new_value, "discord_id": req.discord_id}
             )
             await session.execute(
@@ -288,7 +288,14 @@ class RaceApprovalView(discord.ui.View):
             nickname = await get_user_nickname(req.discord_id)
             channel = interaction.guild.get_channel(req.channel_id)
             member = await interaction.guild.fetch_member(req.discord_id)
-            await channel.send(f"{member.mention}({nickname})님의 종족 변경 신청이 승인됐습니다. {req.old_value} → **{req.new_value}**")
+            await channel.send(f"{member.mention}({nickname})님의 종족 변경 신청이 승인됐습니다. {req.old_value} → **{req.new_value}**\n(종족 변경으로 인해 티어가 **Test** 등급으로 변경되었습니다!)")
+            
+            # 종족변경 강등 시 테스트 티켓 발급
+            try:
+                from cogs.waitlist import spawn_test_ticket
+                await spawn_test_ticket(interaction.client, req.discord_id, nickname, req.new_value)
+            except Exception as e:
+                logger.error(f"[테스트 티켓 발급 오류] {e}")
         except Exception:
             pass
 
@@ -363,6 +370,13 @@ class TierApprovalView(discord.ui.View):
             channel = interaction.guild.get_channel(req.channel_id)
             member = await interaction.guild.fetch_member(req.discord_id)
             await channel.send(f"{member.mention}({nickname})님의 티어 변경 신청이 승인됐습니다. {req.old_value} → **{req.new_value}**")
+            
+            # 대기자 현황판 스무스 동기화 (테스트 졸업 시)
+            try:
+                from cogs.waitlist import sync_waitlist_dashboard
+                await sync_waitlist_dashboard(interaction.client)
+            except Exception as e:
+                logger.error(f"[티어변경 대시보드 갱신오류] {e}")
         except Exception:
             pass
 
@@ -417,28 +431,34 @@ class Admin(commands.Cog):
     async def view_config(self, interaction: discord.Interaction):
         current_role = interaction.guild.get_role(config.ADMIN_ROLE_ID)
         current_channel = interaction.guild.get_channel(config.ADMIN_CHANNEL_ID)
+        test_channel = interaction.guild.get_channel(config.TEST_CHANNEL_ID) if config.TEST_CHANNEL_ID else None
+        general_channel = interaction.guild.get_channel(config.GENERAL_CHANNEL_ID) if getattr(config, 'GENERAL_CHANNEL_ID', None) else None
         role_text = current_role.mention if current_role else f"알 수 없음 (ID: {config.ADMIN_ROLE_ID})"
         channel_text = current_channel.mention if current_channel else f"알 수 없음 (ID: {config.ADMIN_CHANNEL_ID})"
+        test_channel_text = test_channel.mention if test_channel else f"알 수 없음 (ID: {config.TEST_CHANNEL_ID})"
+        general_channel_text = general_channel.mention if general_channel else f"알 수 없음"
         sync_time_text = getattr(config, 'SYNC_TIME', '04:00')
         await interaction.response.send_message(
-            f"**현재 설정**\n관리자 역할: {role_text}\n관리자 채널: {channel_text}\n동기화 시간: {sync_time_text}",
+            f"**현재 설정**\n관리자 역할: {role_text}\n관리자 채널: {channel_text}\n테스트 채널: {test_channel_text}\n일반 채널: {general_channel_text}\n동기화 시간: {sync_time_text}",
             ephemeral=True
         )
 
-    @app_commands.command(name="설정", description="관리자 역할, 관리자 채널, 동기화 시간을 변경합니다")
-    @app_commands.rename(role="관리자역할", channel="관리자채널", sync_time="동기화시간")
-    @app_commands.describe(role="변경할 관리자 역할", channel="변경할 관리자 채널", sync_time="매일 동기화 시각 (HH:MM)")
+    @app_commands.command(name="설정", description="관리자 역할, 관리자/테스트/일반 채널, 동기화 시간을 변경합니다")
+    @app_commands.rename(role="관리자역할", channel="관리자채널", test_channel="테스트채널", general_channel="일반채널", sync_time="동기화시간")
+    @app_commands.describe(role="변경할 관리자 역할", channel="변경할 관리자 채널", test_channel="테스트 인원을 공지할 챼널", general_channel="테스트 인원 호출용 일반 채널", sync_time="매일 동기화 시각 (HH:MM)")
     async def update_config(
         self,
         interaction: discord.Interaction,
         role: discord.Role = None,
         channel: discord.TextChannel = None,
+        test_channel: discord.TextChannel = None,
+        general_channel: discord.TextChannel = None,
         sync_time: str = None,
     ):
+        await interaction.response.defer(ephemeral=True)
 
-
-        if not role and not channel and not sync_time:
-            await interaction.response.send_message("변경할 설정(역할, 채널, 동기화시간)을 입력해주세요.", ephemeral=True)
+        if not role and not channel and not test_channel and not general_channel and not sync_time:
+            await interaction.followup.send("변경할 설정(역할, 채널, 동기화시간)을 입력해주세요.", ephemeral=True)
             return
 
         env_path = find_dotenv()
@@ -456,6 +476,18 @@ class Admin(commands.Cog):
             lines.append(f"관리자 채널: {channel.mention}")
             logger.info(f"[설정] {interaction.user} → ADMIN_CHANNEL_ID={channel.id}")
 
+        if test_channel:
+            set_key(env_path, "TEST_CHANNEL_ID", str(test_channel.id))
+            config.TEST_CHANNEL_ID = test_channel.id
+            lines.append(f"테스트 채널: {test_channel.mention}")
+            logger.info(f"[설정] {interaction.user} → TEST_CHANNEL_ID={test_channel.id}")
+
+        if general_channel:
+            set_key(env_path, "GENERAL_CHANNEL_ID", str(general_channel.id))
+            config.GENERAL_CHANNEL_ID = general_channel.id
+            lines.append(f"일반 호출 채널: {general_channel.mention}")
+            logger.info(f"[설정] {interaction.user} → GENERAL_CHANNEL_ID={general_channel.id}")
+
         if sync_time:
             import re
             if not re.match(r"^(?:[01]\d|2[0-3]):[0-5]\d$", sync_time):
@@ -470,7 +502,7 @@ class Admin(commands.Cog):
             if schedule_cog:
                 schedule_cog.restart_loop()
 
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "✅ 설정이 변경됐습니다.\n" + "\n".join(lines),
             ephemeral=True
         )
@@ -522,6 +554,62 @@ class Admin(commands.Cog):
             view=AdminRemoveView(),
             ephemeral=True
         )
+
+    @app_commands.command(name="테스트종료", description="해당 유저의 테스트를 완료하고 확정 티어를 부여합니다")
+    @app_commands.rename(target_user="대상유저", final_tier="확정티어")
+    @app_commands.choices(final_tier=[
+        app_commands.Choice(name="A", value="A"),
+        app_commands.Choice(name="B", value="B"),
+        app_commands.Choice(name="C", value="C"),
+        app_commands.Choice(name="D", value="D"),
+        app_commands.Choice(name="E", value="E"),
+    ])
+    async def complete_test(self, interaction: discord.Interaction, target_user: discord.Member, final_tier: str):
+        await interaction.response.defer()
+
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                text("SELECT nickname, race, tier FROM users WHERE discord_id = :discord_id"),
+                {"discord_id": target_user.id}
+            )
+            user = result.fetchone()
+
+        if not user:
+            await interaction.followup.send("등록된 유저가 아닙니다.", ephemeral=True)
+            return
+
+        if user.tier != "Test":
+            await interaction.followup.send("해당 유저는 현재 Test 대기자가 아닙니다.", ephemeral=True)
+            return
+
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                text("UPDATE users SET tier = :tier, updated_at = NOW() WHERE discord_id = :discord_id"),
+                {"tier": final_tier, "discord_id": target_user.id}
+            )
+            await session.commit()
+
+        await sync_user_nickname_immediately(interaction, target_user.id)
+
+        if getattr(config, 'TEST_CHANNEL_ID', None):
+            test_channel = interaction.guild.get_channel(config.TEST_CHANNEL_ID)
+            if test_channel:
+                try:
+                    async for message in test_channel.history(limit=100):
+                        if not message.embeds:
+                            continue
+                        embed = message.embeds[0]
+                        if embed.description and f"<@{target_user.id}>" in embed.description and "[테스트 대기]" in embed.title:
+                            embed.title = "✅ [테스트 완료]"
+                            embed.color = 0x808080 
+                            embed.description += f"\n\n**[결과]** 확정 티어: **{final_tier}**"
+                            await message.edit(embed=embed, view=None)
+                            break
+                except Exception as e:
+                    logger.error(f"[테스트 메시지 수정 실패] {e}")
+
+        logger.info(f"[테스트종료] {interaction.user} 가 {target_user.display_name}의 테스트를 종료함. ({final_tier}으로 배정)")
+        await interaction.followup.send(f"✅ {target_user.mention}({user.nickname})님의 테스트가 종료되어 **{final_tier}** 티어로 배정되었습니다.")
 
 
 async def setup(bot: commands.Bot):
