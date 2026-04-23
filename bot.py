@@ -35,7 +35,6 @@ async def main():
         await bot.load_extension("cogs.admin")
         await bot.load_extension("cogs.schedule")
         await bot.load_extension("cogs.waitlist")
-        await bot.load_extension("cogs.match")
         await bot.start(os.getenv("DISCORD_TOKEN"))
 
 
