@@ -81,6 +81,7 @@ class RegisterSelectView(discord.ui.View):
     @discord.ui.select(
         placeholder="티어를 선택하세요",
         options=[
+            discord.SelectOption(label="Test", value="Test"),
             discord.SelectOption(label="A", value="A"),
             discord.SelectOption(label="B", value="B"),
             discord.SelectOption(label="C", value="C"),
@@ -124,6 +125,13 @@ class RegisterSelectView(discord.ui.View):
         logger.info(f"[유저등록] {interaction.user} (ID: {interaction.user.id}) | 닉네임: {self.nickname} | 종족: {self.race} | 티어: {self.tier} | 관리자: {is_owner}")
         await interaction.response.edit_message(content="✅ 등록이 완료됐습니다.", view=None)
         await interaction.channel.send(f"🎉 **{self.nickname}** 님이 등록됐습니다! (종족: {self.race} / 티어: {self.tier})")
+
+        if self.tier == "Test":
+            try:
+                from cogs.waitlist import spawn_test_ticket
+                await spawn_test_ticket(interaction.client, interaction.user.id, self.nickname, self.race)
+            except Exception as e:
+                logger.error(f"[테스트 티켓 발급 오류] {e}")
 
 
 # -----------------------------------------------
@@ -200,7 +208,14 @@ class User(commands.Cog):
                 req_id = result.fetchone().id
                 await session.commit()
 
-            admin_channel = await self.bot.fetch_channel(config.ADMIN_CHANNEL_ID)
+            try:
+                admin_channel = interaction.guild.get_channel(config.ADMIN_CHANNEL_ID)
+                if not admin_channel:
+                    admin_channel = await self.bot.fetch_channel(config.ADMIN_CHANNEL_ID)
+            except discord.Forbidden:
+                await interaction.followup.send("❌ 관리자 채널에 접근할 수 없습니다. 봇 관리 권한 및 채널 보기 허용 여부를 확인해주세요.", ephemeral=True)
+                return
+
             embed = discord.Embed(title="📝 닉네임 변경 신청", color=0xffa500)
             embed.add_field(name="신청자", value=f"{interaction.user.mention}", inline=False)
             embed.add_field(name="현재 닉네임", value=user.nickname, inline=False)
@@ -255,7 +270,14 @@ class User(commands.Cog):
                 req_id = result.fetchone().id
                 await session.commit()
 
-            admin_channel = await self.bot.fetch_channel(config.ADMIN_CHANNEL_ID)
+            try:
+                admin_channel = interaction.guild.get_channel(config.ADMIN_CHANNEL_ID)
+                if not admin_channel:
+                    admin_channel = await self.bot.fetch_channel(config.ADMIN_CHANNEL_ID)
+            except discord.Forbidden:
+                await interaction.followup.send("❌ 관리자 채널에 접근할 수 없습니다. 봇 관리 권한 및 채널 보기 허용 여부를 확인해주세요.", ephemeral=True)
+                return
+
             embed = discord.Embed(title="📝 종족 변경 신청", color=0xffa500)
             embed.add_field(name="신청자", value=f"{interaction.user.mention}", inline=False)
             embed.add_field(name="닉네임", value=user.nickname, inline=False)
@@ -313,7 +335,14 @@ class User(commands.Cog):
                 req_id = result.fetchone().id
                 await session.commit()
 
-            admin_channel = await self.bot.fetch_channel(config.ADMIN_CHANNEL_ID)
+            try:
+                admin_channel = interaction.guild.get_channel(config.ADMIN_CHANNEL_ID)
+                if not admin_channel:
+                    admin_channel = await self.bot.fetch_channel(config.ADMIN_CHANNEL_ID)
+            except discord.Forbidden:
+                await interaction.followup.send("❌ 관리자 채널에 접근할 수 없습니다. 봇 관리 권한 및 채널 보기 허용 여부를 확인해주세요.", ephemeral=True)
+                return
+
             embed = discord.Embed(title="📝 티어 변경 신청", color=0xffa500)
             embed.add_field(name="신청자", value=f"{interaction.user.mention}", inline=False)
             embed.add_field(name="닉네임", value=user.nickname, inline=False)

@@ -34,8 +34,13 @@ async def main():
         await bot.load_extension("cogs.user")
         await bot.load_extension("cogs.admin")
         await bot.load_extension("cogs.schedule")
+        await bot.load_extension("cogs.waitlist")
         await bot.start(os.getenv("DISCORD_TOKEN"))
 
 
-import asyncio
-asyncio.run(main())
+if __name__ == "__main__":
+    import asyncio
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
