@@ -435,7 +435,7 @@ class Admin(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @app_commands.command(name="설정보기", description="현재 설정을 확인합니다")
+    @app_commands.command(name="설정보기", description="[관리자] 현재 설정을 확인합니다")
     async def view_config(self, interaction: discord.Interaction):
         current_role = interaction.guild.get_role(config.ADMIN_ROLE_ID)
         current_channel = interaction.guild.get_channel(config.ADMIN_CHANNEL_ID)
@@ -451,7 +451,7 @@ class Admin(commands.Cog):
             ephemeral=True
         )
 
-    @app_commands.command(name="설정", description="관리자 역할, 관리자/테스트/일반 채널, 동기화 시간을 변경합니다")
+    @app_commands.command(name="설정", description="[관리자] 관리자 역할, 관리자/테스트/일반 채널, 동기화 시간을 변경합니다")
     @app_commands.rename(role="관리자역할", channel="관리자채널", test_channel="테스트채널", general_channel="일반채널", sync_time="동기화시간")
     @app_commands.describe(role="변경할 관리자 역할", channel="변경할 관리자 채널", test_channel="테스트 인원을 공지할 챼널", general_channel="테스트 인원 호출용 일반 채널", sync_time="매일 동기화 시각 (HH:MM)")
     async def update_config(
@@ -515,7 +515,7 @@ class Admin(commands.Cog):
             ephemeral=True
         )
 
-    @app_commands.command(name="관리자등록", description="유저를 관리자로 등록합니다")
+    @app_commands.command(name="관리자등록", description="[관리자] 유저를 관리자로 등록합니다")
     async def register_admin(self, interaction: discord.Interaction):
         async with AsyncSessionLocal() as session:
             result = await session.execute(
@@ -544,7 +544,7 @@ class Admin(commands.Cog):
             ephemeral=True
         )
 
-    @app_commands.command(name="관리자해제", description="관리자를 해제합니다")
+    @app_commands.command(name="관리자해제", description="[관리자] 관리자를 해제합니다")
     async def remove_admin(self, interaction: discord.Interaction):
         async with AsyncSessionLocal() as session:
             result = await session.execute(
@@ -563,7 +563,7 @@ class Admin(commands.Cog):
             ephemeral=True
         )
 
-    @app_commands.command(name="테스트종료", description="해당 유저의 테스트를 완료하고 확정 티어를 부여합니다")
+    @app_commands.command(name="테스트종료", description="[관리자] 해당 유저의 테스트를 완료하고 확정 티어를 부여합니다")
     @app_commands.rename(target_user_id_str="대상유저", final_tier="확정티어")
     @app_commands.autocomplete(target_user_id_str=test_user_autocomplete)
     @app_commands.choices(final_tier=[
