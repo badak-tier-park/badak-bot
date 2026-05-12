@@ -77,6 +77,10 @@ class MatchConfirmView(discord.ui.View):
 
         try:
             async with AsyncSessionLocal() as session:
+                s_res = await session.execute(text("SELECT id FROM seasons ORDER BY start_date DESC NULLS LAST, id DESC LIMIT 1"))
+                season_row = s_res.fetchone()
+                season_id = season_row[0] if season_row else None
+
                 w_res = await session.execute(text("SELECT nickname, race FROM users WHERE nickname = :name"), {"name": self.winner_name})
                 winner_row = w_res.fetchone()
                 l_res = await session.execute(text("SELECT nickname, race FROM users WHERE nickname = :name"), {"name": self.loser_name})
@@ -98,7 +102,8 @@ class MatchConfirmView(discord.ui.View):
                         loser_race, 
                         winner_apm, 
                         loser_apm, 
-                        replay_file
+                        replay_file,
+                        season_id
                     ) VALUES (
                         :discord_id,
                         NOW(),
@@ -110,7 +115,8 @@ class MatchConfirmView(discord.ui.View):
                         :l_race,
                         0,
                         0,
-                        :replay_file
+                        :replay_file,
+                        :season_id
                     )
                 """
                 await session.execute(text(insert_q), {
@@ -120,7 +126,8 @@ class MatchConfirmView(discord.ui.View):
                     "w_race": winner_row.race,
                     "l_name": loser_row.nickname,
                     "l_race": loser_row.race,
-                    "replay_file": f"manual_entry_{uuid.uuid4().hex}"
+                    "replay_file": f"manual_entry_{uuid.uuid4().hex}",
+                    "season_id": season_id
                 })
                 await session.commit()
             
@@ -175,6 +182,10 @@ class MatchBatchModal(discord.ui.Modal, title='다중 경기 일괄 입력'):
         
         try:
             async with AsyncSessionLocal() as session:
+                s_res = await session.execute(text("SELECT id FROM seasons ORDER BY start_date DESC NULLS LAST, id DESC LIMIT 1"))
+                season_row = s_res.fetchone()
+                season_id = season_row[0] if season_row else None
+
                 res = await session.execute(text("SELECT nickname, race FROM users WHERE nickname IN (:my_n, :opp_n)"), 
                                             {"my_n": self.me_name, "opp_n": self.opponent_name})
                 users = {row.nickname: row for row in res.fetchall()}
@@ -276,11 +287,11 @@ class MatchBatchModal(discord.ui.Modal, title='다중 경기 일괄 입력'):
                         INSERT INTO games (
                             discord_id, played_at, map_name, game_duration_seconds, 
                             winner_name, winner_race, loser_name, loser_race, 
-                            winner_apm, loser_apm, replay_file
+                            winner_apm, loser_apm, replay_file, season_id
                         ) VALUES (
                             :u_id, NOW(), :map, 0,
                             :w_n, :w_r, :l_n, :l_r,
-                            0, 0, :replay_file
+                            0, 0, :replay_file, :season_id
                         )
                     """
                     await session.execute(text(insert_q), {
@@ -290,7 +301,8 @@ class MatchBatchModal(discord.ui.Modal, title='다중 경기 일괄 입력'):
                         "w_r": winner.race,
                         "l_n": loser.nickname,
                         "l_r": loser.race,
-                        "replay_file": f"manual_entry_{uuid.uuid4().hex}"
+                        "replay_file": f"manual_entry_{uuid.uuid4().hex}",
+                        "season_id": season_id
                     })
                     desc += f"- **{m['map']}**: {res_str}\n"
                     processed_count += 1
